@@ -1,0 +1,29 @@
+# Carpetas ignoradas
+backend/node_modules/
+frontend/node_modules/
+.DS_Store
+
+backend/.env
+frontend/.env
+
+*.log
+
+# Build directories
+backend/{build,dist,out,tmp}/
+frontend/{build,dist,out,tmp}/
+
+backend/uploads/
+
+# Archivos específicos
+Thumbs.db
+desktop.ini
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# Otros archivos del sistema
+.AppleDouble/
+.LSOverride
+Icon?
+.Trashes
