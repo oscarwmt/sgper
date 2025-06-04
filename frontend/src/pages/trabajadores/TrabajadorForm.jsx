@@ -126,50 +126,59 @@ export default function TrabajadorForm() {
   const gratificacionTipo = watch("gratificacionTipo");
   const departamentoSeleccionado = watch("departamentoId");
 
-  // Cargar listados
-  useEffect(() => {
+// Cargar listados desde la API
+useEffect(() => {
     const cargarListados = async () => {
       try {
-        const [resCiudades, resDepartamentos, resJornadas, resCargos] =
-          await Promise.all([
-            axios.get("/api/ciudades", {
-              headers: { Authorization: `Bearer ${token}` },
-            }),
-            axios.get("/api/departamentos", {
-              headers: { Authorization: `Bearer ${token}` },
-            }),
-            axios.get("/api/jornadas", {
-              headers: { Authorization: `Bearer ${token}` },
-            }),
-            axios.get("/api/cargos", {
-              headers: { Authorization: `Bearer ${token}` },
-            }),
-          ]);
-
+        const [resCiudades, resDepartamentos, resJornadas, resCargos, resComunas] = await Promise.all([
+          axios.get("/api/ciudades", { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get("/api/departamentos", { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get("/api/jornadas", { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get("/api/cargos", { headers: { Authorization: `Bearer ${token}` } }),
+          axios.get("/api/comunas", { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+  
         setCiudades(resCiudades.data || []);
         setDepartamentos(
-            Array.isArray(resDepartamentos.data?.data || resDepartamentos.data)
-              ? resDepartamentos.data?.data || resDepartamentos.data
-              : []
-          );        
+          Array.isArray(resDepartamentos.data?.data || resDepartamentos.data)
+            ? resDepartamentos.data?.data || resDepartamentos.data
+            : []
+        );
         setJornadas(
-            Array.isArray(resJornadas.data?.data || resJornadas.data)
-              ? resJornadas.data?.data || resJornadas.data
-              : []
-          );
+          Array.isArray(resJornadas.data?.data || resJornadas.data)
+            ? resJornadas.data?.data || resJornadas.data
+            : []
+        );
         setCargos(
-            Array.isArray(resCargos.data?.data || resCargos.data)
-              ? resCargos.data?.data || resCargos.data
-              : []
-          );
-
+          Array.isArray(resCargos.data?.data || resCargos.data)
+            ? resCargos.data?.data || resCargos.data
+            : []
+        );
+  
+        // Acá va el set de comunas
+        const comunasData = Array.isArray(resComunas.data?.data)
+          ? resComunas.data.data
+          : Array.isArray(resComunas.data)
+          ? resComunas.data
+          : [];
+        setComunas(comunasData);
+        console.log("Comunas cargadas:", comunasData);
+  
       } catch (err) {
         console.error("Error al cargar listados:", err);
+        setCiudades([]);
+        setDepartamentos([]);
+        setJornadas([]);
+        setCargos([]);
+        setComunas([]);
       }
     };
-
-    cargarListados();
+  
+    if (token) {
+      cargarListados();
+    }
   }, [token]);
+  
 
   // Cargar trabajador si es edición
   useEffect(() => {
@@ -210,25 +219,6 @@ export default function TrabajadorForm() {
         .finally(() => setCargando(false));
     }
   }, [id, token, reset]);
-
-  // Cargar comunas según ciudad
-  const ciudadSeleccionada = watch("ciudad");
-  useEffect(() => {
-    if (ciudadSeleccionada) {
-      axios
-        .get(`/api/comunas?ciudad=${ciudadSeleccionada}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        .then(({ data }) => {
-          setComunas(data || []);
-          if (!data.some((c) => c.id === data.comunaId)) {
-            setValue("comunaId", "");
-          }
-        });
-    } else {
-      setComunas([]);
-    }
-  }, [ciudadSeleccionada, setValue, token]);
 
   // Cargar cargos por departamento
   useEffect(() => {
@@ -506,35 +496,32 @@ export default function TrabajadorForm() {
                   </p>
                 )}
               </div>
-              <div>
+              <div className="mb-4">
                 <label htmlFor="comunaId" className="block mb-1 font-medium">
-                  Comuna
+                    Comuna
                 </label>
                 <select
-                  id="comunaId"
-                  {...register("comunaId")}
-                  className={`w-full border p-2 rounded ${
+                    id="comunaId"
+                    {...register("comunaId")}
+                    className={`w-full border p-2 rounded ${
                     errors.comunaId ? "border-red-600" : "border-gray-300"
-                  }`}
-                  disabled={!ciudadSeleccionada}
+                    }`}
                 >
-                  <option value="">Selecciona una comuna</option>
-                  {Array.isArray(comunas) && comunas.length > 0 ? (
-  comunas.map((c) => (
-    <option key={c.id} value={c.id}>
-      {c.nombre}
-    </option>
-  ))
-) : (
-  <option disabled>No hay comunas disponibles</option>
-)}
+                    <option value="">Selecciona una comuna</option>
+                    {Array.isArray(comunas) && comunas.length > 0 ? (
+                    comunas.map((c) => (
+                        <option key={c.id} value={c.id}>
+                        {c.nombre}
+                        </option>
+                    ))
+                    ) : (
+                    <option disabled>No hay comunas disponibles</option>
+                    )}
                 </select>
                 {errors.comunaId && (
-                  <p className="text-red-600 text-sm mt-1">
-                    {errors.comunaId.message}
-                  </p>
+                    <p className="text-red-600 text-sm mt-1">{errors.comunaId.message}</p>
                 )}
-              </div>
+                </div>
             </div>
           </section>
 

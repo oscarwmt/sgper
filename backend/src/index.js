@@ -7,6 +7,7 @@ import authRoutes from "./routes/authRoutes.js";
 import contratosRouter from "./routes/contratos.js";
 import isapresRouter from "./routes/isapres.js";
 import afpsRouter from "./routes/afps.js";
+import comunasRouter from "./routes/comunas.js";
 
 dotenv.config();
 
@@ -21,6 +22,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/contratos", contratosRouter);
 app.use("/api/isapres", isapresRouter);
 app.use("/api/afps", afpsRouter);
+app.use("/api/", comunasRouter);
+
 
 app.get("/", (req, res) => res.send("API funcionando"));
 
