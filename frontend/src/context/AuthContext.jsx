@@ -1,53 +1,55 @@
+// src/context/AuthContext.jsx
+// src/context/AuthContext.jsx
 import { createContext, useContext, useState, useEffect } from "react";
 
-const AuthContext = createContext();
+export const AuthContext = createContext();
 
-export function AuthProvider({ children }) {
-  const [usuario, setUsuario] = useState(null);
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
-  const [cargando, setCargando] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const tokenGuardado = localStorage.getItem("token");
-    const usuarioGuardado = localStorage.getItem("usuario");
-    console.log("Token guardado en localStorage:", tokenGuardado);
-    console.log("Usuario guardado en localStorage:", usuarioGuardado);
+    const storedToken = localStorage.getItem("token");
+    const storedUser = localStorage.getItem("user");
 
-    if (tokenGuardado && usuarioGuardado) {
-      setToken(tokenGuardado);
-      setUsuario(JSON.parse(usuarioGuardado));
-      console.log("Estado restaurado desde localStorage:", {
-        token: tokenGuardado,
-        usuario: JSON.parse(usuarioGuardado),
-      });
+    console.log("🗂️ Recuperando datos desde localStorage...");
+    console.log("Token:", storedToken);
+    console.log("User:", storedUser);
+
+    if (storedToken && storedUser) {
+      setToken(storedToken);
+      setUser(JSON.parse(storedUser));
+      console.log("✅ Datos cargados en el contexto");
+    } else {
+      console.log("⛔ No hay datos válidos en localStorage");
     }
-    setCargando(false);
+
+    setLoading(false);
   }, []);
 
   const login = (usuario, token) => {
-    setUsuario(usuario);
-    setToken(token);
+    localStorage.setItem("user", JSON.stringify(usuario));
     localStorage.setItem("token", token);
-    localStorage.setItem("usuario", JSON.stringify(usuario));
+    setUser(usuario);
+    setToken(token);
   };
 
   const logout = () => {
-    setUsuario(null);
-    setToken(null);
+    localStorage.removeItem("user");
     localStorage.removeItem("token");
-    localStorage.removeItem("usuario");
+    setUser(null);
+    setToken(null);
   };
 
-  const estaAutenticado = !!usuario && !!token;
+  const estaAutenticado = !!user;
 
   return (
-    <AuthContext.Provider
-      value={{ usuario, token, login, logout, estaAutenticado, cargando }}
-    >
+    <AuthContext.Provider value={{ user, token, login, logout, loading, estaAutenticado }}>
       {children}
     </AuthContext.Provider>
   );
-}
+};
 
 export const useAuth = () => useContext(AuthContext);
-export { AuthContext }; // ✅ Esta línea resuelve el error
+export default AuthProvider;

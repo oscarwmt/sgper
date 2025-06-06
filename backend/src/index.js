@@ -1,3 +1,4 @@
+// index.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -8,6 +9,9 @@ import contratosRouter from "./routes/contratos.js";
 import isapresRouter from "./routes/isapres.js";
 import afpsRouter from "./routes/afps.js";
 import comunasRouter from "./routes/comunas.js";
+import departamentosRouter from "./routes/departamentos.js";
+import cargosRouter from "./routes/cargos.js";
+import jornadasRouter from "./routes/jornadas.js";
 
 dotenv.config();
 
@@ -22,7 +26,10 @@ app.use("/api/auth", authRoutes);
 app.use("/api/contratos", contratosRouter);
 app.use("/api/isapres", isapresRouter);
 app.use("/api/afps", afpsRouter);
-app.use("/api/", comunasRouter);
+app.use("/api", comunasRouter);
+app.use("/api", departamentosRouter);
+app.use("/api", cargosRouter);
+app.use("/api", jornadasRouter);
 
 
 app.get("/", (req, res) => res.send("API funcionando"));

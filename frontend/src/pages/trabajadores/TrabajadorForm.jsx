@@ -1,110 +1,158 @@
 // src/pages/trabajadores/TrabajadorForm.jsx
+
+// === IMPORTACIONES DE LIBRERÍAS Y COMPONENTES ===
 import { useEffect, useState, useContext } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 import * as yup from "yup";
 import { yupResolver } from "@hookform/resolvers/yup";
 import axios from "axios";
-import { AuthContext } from "../../context/AuthContext";
+import { useAuth } from "../../context/AuthContext";
+import { toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
-// Validación RUT chileno
+
+// === FUNCIONES AUXILIARES ===
+
+/**
+ * Valida un RUT chileno (formato: 12.345.678-9)
+ * @param {string} rut - El RUT a validar
+ * @returns {boolean} - Si es válido o no
+ */
 function validarRut(rut) {
   if (!rut || typeof rut !== "string") return false;
-  const partes = rut.split("-");
-  if (partes.length !== 2) return false;
-  const numero = partes[0].replace(/\./g, "");
-  const dvIngresado = partes[1].toUpperCase();
-  if (!/^\d+$/.test(numero)) return false;
+  const [numero, dvIngresado] = rut.split("-");
+  if (!numero || !dvIngresado) return false;
+  const cleanRut = numero.replace(/\./g, "");
+  if (!/^\d+$/.test(cleanRut)) return false;
 
-  const calcularDV = (numero) => {
-    let suma = 0;
-    const pesos = [2, 3, 4, 5, 6, 7];
-    for (let i = 0; i < numero.length; i++) {
-      suma += parseInt(numero[numero.length - 1 - i]) * pesos[i % 6];
+  const calcularDV = (num) => {
+    let suma = 0,
+      multiplo = 2;
+    for (let i = num.length - 1; i >= 0; i--) {
+      suma += parseInt(num[i]) * multiplo;
+      multiplo = multiplo === 7 ? 2 : multiplo + 1;
     }
-    const resto = suma % 11;
-    return resto === 0 ? "0" : resto === 1 ? "K" : (11 - resto).toString();
+    const dv = 11 - (suma % 11);
+    return dv === 11 ? "0" : dv === 10 ? "K" : dv.toString();
   };
 
-  return calcularDV(numero) === dvIngresado;
+  return calcularDV(cleanRut) === dvIngresado.toUpperCase();
 }
 
-// Esquema Yup
-const schema = yup.object().shape({
-  // Datos Personales
-  rut: yup
-    .string()
-    .required("RUT es obligatorio")
-    .test("validar-rut", "Formato RUT inválido", validarRut),
-  nombre: yup
-    .string()
-    .required("Nombre es obligatorio")
-    .min(3, "El nombre debe tener al menos 3 caracteres"),
-  apellidos: yup
-    .string()
-    .required("Apellidos son obligatorios")
-    .min(3, "Los apellidos deben tener al menos 3 caracteres"),
-  correo: yup
-    .string()
-    .required("Correo es obligatorio")
-    .email("Correo inválido"),
-  telefono: yup
-    .string()
-    .nullable()
-    .matches(/^(\+?56)?\s?9\s?\d{4}\s?\d{4}$/, {
-      message: "Formato teléfono inválido",
-      excludeEmptyString: true,
-    }),
-  fechaNacimiento: yup.string().required("Fecha de nacimiento es obligatoria"),
-  estadoCivil: yup.string().required("Estado civil es obligatorio"),
-  hijos: yup.number().min(0, "La cantidad no puede ser negativa").required(),
+// === ESQUEMA DE VALIDACIÓN CON YUP ===
 
-  // Datos de Contacto
+/**
+ * Esquema de validación para el formulario de trabajadores.
+ * Incluye reglas para todos los campos del formulario.
+ */
+const schema = yup.object().shape({
+  // Campo: RUT
+  rut: yup.string().required("RUT es obligatorio").test("valido", "RUT inválido", validarRut),
+
+  // Campo: Nombre
+  nombre: yup.string().required("Nombre es obligatorio").min(3),
+
+  // Campo: Apellidos
+  apellidos: yup.string().required("Apellidos son obligatorios").min(3),
+
+  // Campo: Correo electrónico
+  correo: yup.string().required("Correo es obligatorio").email(),
+
+  // Campo: Teléfono (opcional con formato chileno)
+  telefono: yup.string().nullable().matches(/^(\+?56)?\s?9\s?\d{4}\s?\d{4}$/, {
+    message: "Teléfono inválido",
+    excludeEmptyString: true,
+  }),
+
+  // Campo: Fecha de nacimiento
+  fechaNacimiento: yup.string().required("Fecha de nacimiento es obligatoria"),
+
+  // Campo: Estado civil
+  estadoCivil: yup.string().required("Estado civil es obligatorio"),
+
+  // Campo: Hijos
+  hijos: yup.number().min(0).required(),
+
+  // Campo: Dirección
   direccion: yup.string().required("Dirección es obligatoria"),
+
+  // Campo: Casa / Bloque / Depto
   casaBloqueDepto: yup.string(),
+
+  // Campo: Comuna ID
   comunaId: yup.string().required("Debe seleccionar una comuna"),
+
+  // Campo: Ciudad
   ciudad: yup.string().required("Ciudad es obligatoria"),
 
-  // Datos Profesionales
+  // Campo: Departamento ID
   departamentoId: yup.string().required("Debe seleccionar un departamento"),
+
+  // Campo: Cargo ID
   cargoId: yup.string().required("Debe seleccionar un cargo"),
 
-  // Contrato Laboral
+  // Campo: Tipo de contrato
   tipoContrato: yup.string().required("Tipo de contrato es obligatorio"),
-  cantidadDuracion: yup.number()
-    .positive("La cantidad debe ser mayor a cero")
-    .when("tipoContrato", {
-      is: (val) => val !== "Indefinido",
-      then: (schema) =>
-        schema.required("Este campo es obligatorio si no es indefinido"),
-      otherwise: (schema) => schema.nullable(),
-    }),
-  unidadDuracion: yup.string().when("tipoContrato", {
+
+  // Campo: Cantidad de duración (solo si no es indefinido)
+  cantidadDuracion: yup
+  .number()
+  .transform((value, originalValue) => (originalValue === "" ? null : value))
+  .nullable()
+  .when("tipoContrato", {
     is: (val) => val !== "Indefinido",
     then: (schema) =>
-      schema.required("Debe seleccionar una unidad de duración"),
+      schema.required("Campo obligatorio si no es indefinido").positive("Debe ser mayor a cero"),
     otherwise: (schema) => schema.nullable(),
   }),
+
+  // Campo: Unidad de duración (solo si no es indefinido)
+  unidadDuracion: yup
+    .string()
+    .nullable()
+    .when("tipoContrato", {
+      is: (val) => val !== "Indefinido",
+      then: (schema) => schema.required("Seleccione unidad de duración"),
+      otherwise: (schema) => schema.nullable(),
+    }),
+
+  // Campo: Jornada laboral ID
   jornadaLaboralId: yup.string().required("Debe seleccionar una jornada"),
-  gratificacionTipo: yup.string().required("Debe seleccionar tipo de gratificación"),
-  gratificacionMonto: yup.number().when("gratificacionTipo", {
-    is: "Fija",
-    then: (schema) =>
-      schema
-        .positive("Debe ser un monto positivo")
-        .required("Este campo es obligatorio si la gratificación es fija"),
-    otherwise: (schema) => schema.nullable(),
-  }),
+
+  // Campo: Gratificación tipo
+  gratificacionTipo: yup.string().required("Seleccione tipo de gratificación"),
+
+  // Campo: Monto de gratificación (solo si es fija)
+  gratificacionMonto: yup
+    .number()
+    .transform((value, originalValue) => (originalValue === "" ? null : value))
+    .nullable()
+    .when("gratificacionTipo", {
+      is: "Fija",
+      then: (schema) =>
+        schema.required("Monto obligatorio si es fija").positive("Monto debe ser positivo"),
+      otherwise: (schema) => schema.nullable(),
+    }),
 });
+
+// === COMPONENTE PRINCIPAL: TrabajadorForm ===
+
+/**
+ * Componente principal para crear o editar un trabajador.
+ * Contiene todo el formulario con validación y lógica de carga de datos relacionados.
+ */
+
 
 export default function TrabajadorForm() {
   const { id } = useParams();
+  const modoEdicion = !!id;   // true si hay ID => edición
   const navigate = useNavigate();
-  const { token } = useContext(AuthContext);
+  const { token } = useAuth();
+  const API_URL = import.meta.env.VITE_API_URL;
+
   const [cargando, setCargando] = useState(false);
   const [errorGeneral, setErrorGeneral] = useState("");
-
-  // Listados
   const [ciudades, setCiudades] = useState([]);
   const [departamentos, setDepartamentos] = useState([]);
   const [cargos, setCargos] = useState([]);
@@ -118,163 +166,220 @@ export default function TrabajadorForm() {
     watch,
     reset,
     formState: { errors },
-  } = useForm({
-    resolver: yupResolver(schema),
-  });
+  } = useForm({ resolver: yupResolver(schema) });
 
   const tipoContrato = watch("tipoContrato");
   const gratificacionTipo = watch("gratificacionTipo");
   const departamentoSeleccionado = watch("departamentoId");
 
-// Cargar listados desde la API
-useEffect(() => {
+  useEffect(() => {
+    const tipo = watch("tipoContrato");
+    if (tipo === "Indefinido") {
+      setValue("cantidadDuracion", null);
+      setValue("unidadDuracion", null);
+    }
+  }, [watch("tipoContrato")]);
+  
+  useEffect(() => {
+    const tipoGrat = watch("gratificacionTipo");
+    if (tipoGrat !== "Fija") {
+      setValue("gratificacionMonto", null);
+    }
+  }, [watch("gratificacionTipo")]);
+  
+  // Cargar listados
+  useEffect(() => {
+    if (!token) return;
     const cargarListados = async () => {
       try {
-        const [resCiudades, resDepartamentos, resJornadas, resCargos, resComunas] = await Promise.all([
-          axios.get("/api/ciudades", { headers: { Authorization: `Bearer ${token}` } }),
-          axios.get("/api/departamentos", { headers: { Authorization: `Bearer ${token}` } }),
-          axios.get("/api/jornadas", { headers: { Authorization: `Bearer ${token}` } }),
-          axios.get("/api/cargos", { headers: { Authorization: `Bearer ${token}` } }),
-          axios.get("/api/comunas", { headers: { Authorization: `Bearer ${token}` } }),
+        const headers = { Authorization: `Bearer ${token}` };
+
+        const [resDepartamentos, resJornadas, resComunas] = await Promise.all([
+          axios.get(`${API_URL}/api/departamento`, { headers }),
+          axios.get(`${API_URL}/api/jornadas`, { headers }),
+          axios.get(`${API_URL}/api/comunas`, { headers }),
         ]);
-  
-        setCiudades(resCiudades.data || []);
-        setDepartamentos(
-          Array.isArray(resDepartamentos.data?.data || resDepartamentos.data)
-            ? resDepartamentos.data?.data || resDepartamentos.data
-            : []
-        );
-        setJornadas(
-          Array.isArray(resJornadas.data?.data || resJornadas.data)
-            ? resJornadas.data?.data || resJornadas.data
-            : []
-        );
-        setCargos(
-          Array.isArray(resCargos.data?.data || resCargos.data)
-            ? resCargos.data?.data || resCargos.data
-            : []
-        );
-  
-        // Acá va el set de comunas
-        const comunasData = Array.isArray(resComunas.data?.data)
-          ? resComunas.data.data
-          : Array.isArray(resComunas.data)
-          ? resComunas.data
-          : [];
+
+        // Procesar comunas
+        let comunasData = [];
+        if (Array.isArray(resComunas.data)) {
+          comunasData = [...resComunas.data];
+        } else if (Array.isArray(resComunas.data?.data)) {
+          comunasData = [...resComunas.data.data];
+        }
+
         setComunas(comunasData);
-        console.log("Comunas cargadas:", comunasData);
-  
+
+        // Procesar departamentos
+        let departamentosData = [];
+        if (Array.isArray(resDepartamentos.data)) {
+          departamentosData = [...resDepartamentos.data];
+        } else if (Array.isArray(resDepartamentos.data?.data)) {
+          departamentosData = [...resDepartamentos.data.data];
+        }
+
+        setDepartamentos(departamentosData);
+
+        // Procesar jornadas
+        let jornadasData = [];
+        if (Array.isArray(resJornadas.data)) {
+          jornadasData = [...resJornadas.data];
+        } else if (Array.isArray(resJornadas.data?.data)) {
+          jornadasData = [...resJornadas.data.data];
+        }
+
+        setJornadas(jornadasData);
+
       } catch (err) {
-        console.error("Error al cargar listados:", err);
-        setCiudades([]);
+        console.error("Error al cargar listados:", err.message || err.response?.data || err);
+        setErrorGeneral("No se pudieron cargar algunos datos. Verifica tu conexión.");
         setDepartamentos([]);
         setJornadas([]);
-        setCargos([]);
         setComunas([]);
       }
     };
-  
-    if (token) {
-      cargarListados();
-    }
+
+    cargarListados();
   }, [token]);
-  
 
   // Cargar trabajador si es edición
   useEffect(() => {
-    if (id) {
+    if (id && token) {
       setCargando(true);
       axios
-        .get(`/api/trabajadores/${id}`, {
+        .get(`${API_URL}/api/trabajadores/${id}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
         .then(({ data }) => {
-          reset({
-            rut: data.rut,
-            nombre: data.nombre,
-            apellidos: data.apellidos,
-            correo: data.correo,
-            telefono: data.telefono,
-            fechaNacimiento: data.fechaNacimiento,
-            estadoCivil: data.estadoCivil,
-            hijos: data.hijos,
-            direccion: data.direccion,
-            casaBloqueDepto: data.casaBloqueDepto,
-            comunaId: data.comunaId,
-            ciudad: data.ciudad,
-            departamentoId: data.departamentoId,
-            cargoId: data.cargoId,
-            tipoContrato: data.tipoContrato,
-            cantidadDuracion: data.cantidadDuracion,
-            unidadDuracion: data.unidadDuracion,
-            jornadaLaboralId: data.jornadaLaboralId,
-            gratificacionTipo: data.gratificacionTipo,
-            gratificacionMonto: data.gratificacionMonto,
-          });
+          reset(data);
         })
-        .catch((err) => {
-          console.error(err);
+        .catch(() => {
           setErrorGeneral("No se pudo cargar el trabajador");
         })
         .finally(() => setCargando(false));
     }
   }, [id, token, reset]);
 
-  // Cargar cargos por departamento
+  // Cargar cargos según departamento
   useEffect(() => {
-    if (departamentoSeleccionado) {
+    if (departamentoSeleccionado && !isNaN(departamentoSeleccionado) && token) {
       axios
-        .get(`/api/cargos?departamentoId=${departamentoSeleccionado}`, {
+        .get(`${API_URL}/api/cargos?departamentoId=${departamentoSeleccionado}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
         .then(({ data }) => {
-          setCargos(data || []);
-          if (!data.some((c) => c.id === data.cargoId)) {
-            setValue("cargoId", "");
+          const cargosData = Array.isArray(data?.data)
+            ? data.data
+            : Array.isArray(data)
+            ? data
+            : [];
+
+          setCargos(cargosData);
+
+          if (cargosData.length > 0 && watch("cargoId")) {
+            const cargoExiste = cargosData.some((c) => c.id === watch("cargoId"));
+            if (!cargoExiste) setValue("cargoId", "");
           }
+        })
+        .catch((err) => {
+          console.error("Error al cargar cargos:", err);
+          setCargos([]);
         });
     } else {
       setCargos([]);
     }
-  }, [departamentoSeleccionado, setValue, token]);
+  }, [departamentoSeleccionado, token]);
 
   const onSubmit = async (datos) => {
+    console.log("1. onSubmit - Inicio de la función.");
     setErrorGeneral("");
     setCargando(true);
-
+  
+    if (!token) {
+      console.log("1a. onSubmit - Token no presente. Deteniendo envío.");
+      setErrorGeneral("No tienes sesión iniciada");
+      setCargando(false);
+      return;
+    }
+  
     try {
-      const metodo = id ? "put" : "post";
-      const url = id
-        ? `/api/trabajadores/${id}`
-        : "/api/trabajadores";
-      await axios[metodo](url, datos, {
+      // Armado de objeto limpio según condiciones
+      const datosLimpios = {
+        ...datos,
+        hijos: parseInt(datos.hijos),
+        comunaId: datos.comunaId ? parseInt(datos.comunaId) : null,
+        departamentoId: datos.departamentoId ? parseInt(datos.departamentoId) : null,
+        cargoId: datos.cargoId ? parseInt(datos.cargoId) : null,
+        cantidadDuracion:
+          datos.tipoContrato !== "Indefinido" && datos.cantidadDuracion
+            ? parseInt(datos.cantidadDuracion)
+            : null,
+        unidadDuracion: datos.tipoContrato !== "Indefinido" ? datos.unidadDuracion : null,
+        jornadaLaboralId: datos.jornadaLaboralId ? parseInt(datos.jornadaLaboralId) : null,
+        gratificacionMonto:
+          datos.gratificacionTipo === "Fija" && datos.gratificacionMonto
+            ? parseFloat(datos.gratificacionMonto)
+            : null,
+      };
+  
+      console.log("2. onSubmit - Datos limpios preparados:", datosLimpios);
+  
+      const metodo = modoEdicion ? "put" : "post";
+      const url = modoEdicion
+        ? `${API_URL}/api/trabajadores/${id}`
+        : `${API_URL}/api/trabajadores`;
+  
+      console.log(`3. onSubmit - Realizando petición ${metodo.toUpperCase()} a URL: ${url}`);
+  
+      const response = await axios[metodo](url, datosLimpios, {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
       });
+  
+      console.log("4. onSubmit - Petición Axios completada. Respuesta:", response.data);
+  
+      toast.success(
+        modoEdicion
+          ? "Trabajador actualizado correctamente"
+          : "Trabajador creado correctamente"
+      );
+  
+      reset();
       navigate("/trabajadores");
+      console.log("5. onSubmit - Navegando a /trabajadores.");
     } catch (err) {
-      console.error(err);
-      const mensaje =
-        err?.response?.data?.message ||
-        "Ocurrió un error al guardar el trabajador.";
-      setErrorGeneral(mensaje);
+      console.error(
+        "X. onSubmit - Error capturado en el try-catch:",
+        err.response?.data || err.message
+      );
+      const msg =
+        err?.response?.data?.message || "Error al guardar el trabajador.";
+      setErrorGeneral(msg);
+      toast.error("Error al guardar trabajador");
     } finally {
+      console.log("Y. onSubmit - Bloque finally ejecutado. Cargando a false.");
       setCargando(false);
     }
   };
+  
+  
+
+
+  // === RENDERIZADO DEL COMPONENTE ===
 
   return (
     <div className="max-w-4xl mx-auto p-4 bg-white rounded shadow">
+      {/* Título del formulario */}
       <h1 className="text-2xl font-bold mb-4">
         {id ? "Editar Trabajador" : "Crear Trabajador"}
       </h1>
 
-      {errorGeneral && (
-        <p className="text-red-600 mb-4">{errorGeneral}</p>
-      )}
+      {/* Mensaje de error global */}
+      {errorGeneral && <p className="text-red-600 mb-4">{errorGeneral}</p>}
 
+      {/* Vista de carga */}
       {cargando ? (
         <p>Cargando...</p>
       ) : (
@@ -500,8 +605,7 @@ useEffect(() => {
                 <label htmlFor="comunaId" className="block mb-1 font-medium">
                     Comuna
                 </label>
-                <select
-                    id="comunaId"
+                <select id="comunaId"
                     {...register("comunaId")}
                     className={`w-full border p-2 rounded ${
                     errors.comunaId ? "border-red-600" : "border-gray-300"
@@ -509,11 +613,17 @@ useEffect(() => {
                 >
                     <option value="">Selecciona una comuna</option>
                     {Array.isArray(comunas) && comunas.length > 0 ? (
-                    comunas.map((c) => (
+                    comunas.map((c) => {
+                        if (!c || !("id" in c) || !("nombre" in c)) {
+                        console.warn("Comuna inválida:", c);
+                        return null;
+                        }
+                        return (
                         <option key={c.id} value={c.id}>
-                        {c.nombre}
+                            {c.nombre}
                         </option>
-                    ))
+                        );
+                    })
                     ) : (
                     <option disabled>No hay comunas disponibles</option>
                     )}
@@ -543,12 +653,15 @@ useEffect(() => {
                     errors.departamentoId ? "border-red-600" : "border-gray-300"
                   }`}
                 >
-                  <option value="">Selecciona un departamento</option>
-                  {departamentos.map((d) => (
+                  {Array.isArray(departamentos) && departamentos.length > 0 ? (
+                  departamentos.map((d) => (
                     <option key={d.id} value={d.id}>
                       {d.nombre}
                     </option>
-                  ))}
+                  ))
+                ) : (
+                  <option disabled>No hay departamentos disponibles</option>
+                )}
                 </select>
                 {errors.departamentoId && (
                   <p className="text-red-600 text-sm mt-1">
@@ -569,11 +682,15 @@ useEffect(() => {
                   disabled={!departamentoSeleccionado}
                 >
                   <option value="">Selecciona un cargo</option>
-                  {cargos.map((c) => (
+                  {Array.isArray(cargos) && cargos.length > 0 ? (
+                  cargos.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.nombre}
                     </option>
-                  ))}
+                  ))
+                ) : (
+                  <option disabled>No hay cargos disponibles</option>
+                )}
                 </select>
                 {errors.cargoId && (
                   <p className="text-red-600 text-sm mt-1">
@@ -617,82 +734,86 @@ useEffect(() => {
               </div>
 
               {tipoContrato !== "Indefinido" && (
-                <>
-                  <div>
-                    <label
-                      htmlFor="cantidadDuracion"
-                      className="block mb-1 font-medium"
-                    >
-                      Cantidad de Duración
-                    </label>
-                    <input
-                      id="cantidadDuracion"
-                      type="number"
-                      {...register("cantidadDuracion", { valueAsNumber: true })}
-                      className={`w-full border p-2 rounded ${
-                        errors.cantidadDuracion ? "border-red-600" : "border-gray-300"
-                      }`}
-                    />
-                    {errors.cantidadDuracion && (
-                      <p className="text-red-600 text-sm mt-1">
-                        {errors.cantidadDuracion.message}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="unidadDuracion"
-                      className="block mb-1 font-medium"
-                    >
-                      Unidad de Duración
-                    </label>
-                    <select
-                      id="unidadDuracion"
-                      {...register("unidadDuracion")}
-                      className={`w-full border p-2 rounded ${
-                        errors.unidadDuracion ? "border-red-600" : "border-gray-300"
-                      }`}
-                    >
-                      <option value="">Selecciona una unidad</option>
-                      <option value="Días">Días</option>
-                      <option value="Meses">Meses</option>
-                    </select>
-                    {errors.unidadDuracion && (
-                      <p className="text-red-600 text-sm mt-1">
-                        {errors.unidadDuracion.message}
-                      </p>
-                    )}
-                  </div>
-                </>
+                <div className="flex gap-4 items-end">
+                <div className="w-1/2">
+                  <label
+                    htmlFor="cantidadDuracion"
+                    className="block mb-1 font-medium"
+                  >
+                    Duración
+                  </label>
+                  <input
+                    id="cantidadDuracion"
+                    type="number"
+                    {...register("cantidadDuracion", { valueAsNumber: true })}
+                    className={`w-16 border p-2 rounded ${
+                      errors.cantidadDuracion ? "border-red-600" : "border-gray-300"
+                    }`}
+                    placeholder="Ej. 12"
+                  />
+                  {errors.cantidadDuracion && (
+                    <p className="text-red-600 text-sm mt-1">
+                      {errors.cantidadDuracion.message}
+                    </p>
+                  )}
+                </div>
+              
+                <div className="w-1/2">
+                  <label
+                    htmlFor="unidadDuracion"
+                    className="sr-only" // Oculta visualmente la etiqueta, pero accesible para lectores de pantalla
+                  >
+                    Unidad de Duración
+                  </label>
+                  <select
+                    id="unidadDuracion"
+                    {...register("unidadDuracion")}
+                    className={`w-full border p-2 rounded ${
+                      errors.unidadDuracion ? "border-red-600" : "border-gray-300"
+                    }`}
+                    defaultValue="Meses"
+                  >
+                    <option value="">Selecciona una unidad</option>
+                    <option value="Días">Días</option>
+                    <option value="Meses">Meses</option>
+                  </select>
+                  {errors.unidadDuracion && (
+                    <p className="text-red-600 text-sm mt-1">
+                      {errors.unidadDuracion.message}
+                    </p>
+                  )}
+                </div>
+              </div>
               )}
 
-              <div>
-                <label
-                  htmlFor="jornadaLaboralId"
-                  className="block mb-1 font-medium"
-                >
-                  Jornada Laboral
+                <div>
+                <label htmlFor="jornadaLaboralId" className="block mb-1 font-medium">
+                    Jornada Laboral
                 </label>
                 <select
-                  id="jornadaLaboralId"
-                  {...register("jornadaLaboralId")}
-                  className={`w-full border p-2 rounded ${
+                    id="jornadaLaboralId"
+                    {...register("jornadaLaboralId")}
+                    className={`w-full border p-2 rounded ${
                     errors.jornadaLaboralId ? "border-red-600" : "border-gray-300"
-                  }`}
+                    }`}
                 >
-                  <option value="">Selecciona una jornada</option>
-                  {jornadas.map((j) => (
-                    <option key={j.id} value={j.id}>
-                      {j.nombre}
-                    </option>
-                  ))}
+                    <option value="">Selecciona una jornada</option>
+                    {jornadas && Array.isArray(jornadas) && jornadas.length > 0 ? (
+                    jornadas.map((j) => (
+                        <option key={j.id} value={j.id}>
+                        {j.nombre}
+                        </option>
+                    ))
+                    ) : (
+                    <option disabled>No hay jornadas disponibles</option>
+                    )}
                 </select>
                 {errors.jornadaLaboralId && (
-                  <p className="text-red-600 text-sm mt-1">
+                    <p className="text-red-600 text-sm mt-1">
                     {errors.jornadaLaboralId.message}
-                  </p>
+                    </p>
                 )}
-              </div>
+                </div>
 
               <div>
                 <label
@@ -769,4 +890,4 @@ useEffect(() => {
       )}
     </div>
   );
-}
+} 

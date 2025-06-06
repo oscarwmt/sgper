@@ -13,13 +13,12 @@ import TrabajadorForm from "./pages/trabajadores/TrabajadorForm.jsx";
 import TrabajadorRemuneraciones from "./pages/trabajadores/TrabajadorRemuneraciones.jsx";
 import TrabajadorGestionTalento from "./pages/trabajadores/TrabajadorGestionTalento.jsx";
 
-
-
 import InformacionEmpresa from "./pages/empresas/Informacion.jsx";
 import CargosEmpresa from "./pages/empresas/Cargos.jsx";
 
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider } from './context/AuthContext';
 import PrivateRoute from "./components/PrivateRoute";
+import PublicOnlyRoute from "./components/PublicOnlyRoute";
 
 import "./index.css";
 
@@ -32,7 +31,14 @@ ReactDOM.createRoot(document.getElementById("root")).render(
   }}>
         <Routes>
           {/* Ruta pública */}
-          <Route path="/login" element={<Login />} />
+          <Route
+            path="/login"
+            element={
+              <PublicOnlyRoute>
+                <Login />
+              </PublicOnlyRoute>
+            }
+          />
 
           {/* Rutas protegidas */}
           <Route
@@ -43,7 +49,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
               </PrivateRoute>
             }
           >
-            <Route index element={<Navigate to="trabajadores" replace />} />
+            <Route index element={<Navigate to="/dashboard/trabajadores" replace />} />
 
             <Route path="trabajadores">
               <Route index element={<DatosPersonales />} />
@@ -64,7 +70,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           </Route>
 
           {/* Catch-all */}
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

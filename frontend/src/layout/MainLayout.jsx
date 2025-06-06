@@ -5,10 +5,10 @@ import TopNav from "../components/TopNav";
 import SideNav from "../components/SideNav";
 import { useAuth } from "../context/AuthContext";
 
-function MainLayout() {
+export default function MainLayout() {
   const location = useLocation();
-  const [activeSection, setActiveSection] = useState("trabajadores");
   const { estaAutenticado } = useAuth();
+  const [activeSection, setActiveSection] = useState("trabajadores");
 
   // Actualiza la sección activa según la ruta actual
   useEffect(() => {
@@ -18,6 +18,7 @@ function MainLayout() {
   }, [location.pathname]);
 
   if (!estaAutenticado) {
+    console.log("🚫 Acceso denegado → Redirigiendo a /login");
     return <Navigate to="/login" replace />;
   }
 
@@ -33,5 +34,3 @@ function MainLayout() {
     </div>
   );
 }
-
-export default MainLayout;

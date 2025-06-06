@@ -4,44 +4,21 @@ import { useNavigate } from "react-router-dom";
 
 const PAGE_SIZE = 5;
 
-function calcularDigitoVerificador(numero) {
-  const digitos = numero.toString().split("").map(Number);
-  const pesos = [2, 3, 4, 5, 6, 7, 2, 3, 4, 5, 6, 7];
-  let suma = 0;
-  for (let i = 0; i < digitos.length; i++) {
-    suma += digitos[digitos.length - 1 - i] * pesos[i];
-  }
-  const resto = suma % 11;
-  if (resto === 1) return "K";
-  if (resto === 0) return 0;
-  return 11 - resto;
-}
-
-function validarRutCompleto(rutCompleto) {
-  if (!rutCompleto || typeof rutCompleto !== "string") return false;
-  const partes = rutCompleto.split("-");
-  if (partes.length !== 2) return false;
-  const numero = partes[0].replace(/\./g, "");
-  const dvIngresado = partes[1].toUpperCase();
-
-  if (!/^\d+$/.test(numero)) return false;
-
-  const dvCalculado = calcularDigitoVerificador(numero).toString().toUpperCase();
-  return dvCalculado === dvIngresado;
-}
-
 function DatosPersonales() {
   const [trabajadores, setTrabajadores] = useState([]);
   const [filtro, setFiltro] = useState("");
   const [pagina, setPagina] = useState(1);
   const [totalPaginas, setTotalPaginas] = useState(1);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState("");
   const [modalDesactivarVisible, setModalDesactivarVisible] = useState(false);
   const [trabajadorAEliminar, setTrabajadorAEliminar] = useState(null);
-  const [error, setError] = useState("");
+
   const navigate = useNavigate();
 
-  // Función para cargar la lista de trabajadores
+  // Función para cargar trabajadores desde API
   const cargarTrabajadores = useCallback(async () => {
+    setCargando(true);
     setError("");
     try {
       const params = new URLSearchParams({
@@ -49,17 +26,29 @@ function DatosPersonales() {
         limite: PAGE_SIZE,
         filtro,
       });
+  
       const res = await fetch(`/api/trabajadores?${params.toString()}`);
       if (!res.ok) throw new Error("Error al cargar trabajadores");
+  
       const data = await res.json();
-      setTrabajadores(data.trabajadores);
-      setTotalPaginas(data.totalPaginas);
+  
+      if (data && Array.isArray(data.data)) {
+        setTrabajadores(data.data);
+        setTotalPaginas(data.total_paginas || Math.ceil(data.data.length / PAGE_SIZE));
+      } else {
+        setTrabajadores([]);
+        setTotalPaginas(1);
+      }
     } catch (e) {
-      setError("Error al cargar trabajadores");
+      console.error("Error al cargar trabajadores:", e.message);
+      setError("No se pudieron cargar los trabajadores");
       setTrabajadores([]);
       setTotalPaginas(1);
+    } finally {
+      setCargando(false);
     }
   }, [pagina, filtro]);
+  
 
   useEffect(() => {
     cargarTrabajadores();
@@ -91,12 +80,14 @@ function DatosPersonales() {
   }
 
   return (
-    <div>
+    <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">Listado de Trabajadores</h1>
 
+      {/* Mensaje de error */}
       {error && <p className="text-red-600 mb-2">{error}</p>}
 
-      <div className="mb-4 flex items-center space-x-2">
+      {/* Filtro y botón de crear */}
+      <div className="mb-4 flex items-center gap-2">
         <input
           type="text"
           placeholder="Buscar por nombre o RUT"
@@ -109,13 +100,14 @@ function DatosPersonales() {
         />
         <button
           onClick={() => navigate("/dashboard/trabajadores/crear")}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
         >
           Crear Trabajador
         </button>
       </div>
 
-      <table className="w-full border border-gray-300 rounded">
+      {/* Tabla de trabajadores */}
+      <table className="min-w-full border border-gray-300 rounded overflow-hidden">
         <thead className="bg-gray-200">
           <tr>
             <th className="p-2 border">RUT</th>
@@ -126,20 +118,26 @@ function DatosPersonales() {
           </tr>
         </thead>
         <tbody>
-          {trabajadores.length === 0 ? (
+          {cargando ? (
             <tr>
               <td colSpan="5" className="text-center p-4">
-                No se encontraron trabajadores.
+                Cargando trabajadores...
+              </td>
+            </tr>
+          ) : !Array.isArray(trabajadores) || trabajadores.length === 0 ? (
+            <tr>
+              <td colSpan="5" className="text-center p-4">
+                No hay trabajadores disponibles
               </td>
             </tr>
           ) : (
             trabajadores.map((t) => (
               <tr key={t.id}>
                 <td className="border p-2">{t.rut}</td>
-                <td className="border p-2">{t.nombre}</td>
+                <td className="border p-2">{t.nombre} {t.apellidos}</td>
                 <td className="border p-2">{t.correo}</td>
-                <td className="border p-2">{t.telefono}</td>
-                <td className="border p-2 space-x-2">
+                <td className="border p-2">{t.telefono || "-"}</td>
+                <td className="border p-2 text-center space-x-2">
                   <button
                     onClick={() => navigate(`/trabajadores/editar/${t.id}`)}
                     className="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-600"
@@ -164,7 +162,7 @@ function DatosPersonales() {
         <button
           disabled={pagina === 1}
           onClick={() => setPagina(pagina - 1)}
-          className="px-3 py-1 border rounded disabled:opacity-50"
+          className="px-3 py-1 border rounded disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Anterior
         </button>
@@ -174,17 +172,17 @@ function DatosPersonales() {
         <button
           disabled={pagina === totalPaginas}
           onClick={() => setPagina(pagina + 1)}
-          className="px-3 py-1 border rounded disabled:opacity-50"
+          className="px-3 py-1 border rounded disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Siguiente
         </button>
       </div>
 
-      {/* Modal Confirmar Desactivar */}
+      {/* Modal de confirmación */}
       {modalDesactivarVisible && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center z-50">
-          <div className="bg-white rounded p-6 w-80 relative">
-            <h2 className="text-xl font-bold mb-4">Confirmar Desactivar</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+          <div className="bg-white rounded p-6 shadow-lg w-80">
+            <h2 className="text-xl font-semibold mb-4">Confirmar Desactivar</h2>
             <p>
               ¿Está seguro que desea desactivar a{" "}
               <strong>{trabajadorAEliminar?.nombre}</strong>?
@@ -192,13 +190,13 @@ function DatosPersonales() {
             <div className="mt-4 flex justify-end space-x-2">
               <button
                 onClick={cerrarModalDesactivar}
-                className="px-4 py-2 rounded border hover:bg-gray-100"
+                className="px-4 py-2 border rounded hover:bg-gray-100"
               >
                 Cancelar
               </button>
               <button
                 onClick={confirmarDesactivar}
-                className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
               >
                 Desactivar
               </button>

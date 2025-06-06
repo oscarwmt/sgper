@@ -1,13 +1,18 @@
-// PrivateRoute.jsx
-import { Navigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+// components/PrivateRoute.jsx
+import { useContext } from "react";
+import { Navigate, Outlet } from "react-router-dom";
+import { AuthContext } from "../context/AuthContext";
 
-function PrivateRoute({ children }) {
-  const { estaAutenticado, cargando } = useAuth();
+const PrivateRoute = ({ children }) => {
+  const { estaAutenticado, loading } = useContext(AuthContext);
 
-  if (cargando) return <div>Cargando...</div>;
+  if (loading) return null; // O un loader
 
-  return estaAutenticado ? children : <Navigate to="/login" replace />;
-}
+  if (!estaAutenticado) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children ? children : <Outlet />;
+};
 
 export default PrivateRoute;

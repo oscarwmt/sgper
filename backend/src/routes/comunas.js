@@ -9,10 +9,6 @@ router.get("/comunas", async (req, res) => {
 
   let query = "SELECT id_comuna as id, nombre FROM comunas";
 
-  if (ciudad) {
-    query += " WHERE ciudad = $1";
-  }
-
   try {
     const result = await pool.query(query, ciudad ? [ciudad] : []);
 
