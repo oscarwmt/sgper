@@ -48,7 +48,6 @@ function DatosPersonales() {
       setCargando(false);
     }
   }, [pagina, filtro]);
-  
 
   useEffect(() => {
     cargarTrabajadores();
@@ -78,6 +77,7 @@ function DatosPersonales() {
       setError("No se pudo desactivar el trabajador");
     }
   }
+  
 
   return (
     <div className="p-4">
@@ -138,18 +138,24 @@ function DatosPersonales() {
                 <td className="border p-2">{t.correo}</td>
                 <td className="border p-2">{t.telefono || "-"}</td>
                 <td className="border p-2 text-center space-x-2">
-                  <button
-                    onClick={() => navigate(`/trabajadores/editar/${t.id}`)}
-                    className="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-600"
-                  >
-                    Editar
-                  </button>
-                  <button
-                    onClick={() => abrirModalDesactivar(t)}
-                    className="bg-red-600 text-white px-2 py-1 rounded hover:bg-red-700"
-                  >
-                    Desactivar
-                  </button>
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        navigate(`/dashboard/trabajadores/editar/${t.id}`);
+                        }}
+                        className="bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700"
+                    >
+                        Editar
+                    </button>
+
+                    <button
+                        onClick={() => abrirModalDesactivar(t)}
+                        className="bg-red-600 text-white px-2 py-1 rounded hover:bg-red-700"
+                    >
+                        Desactivar
+                    </button>
                 </td>
               </tr>
             ))

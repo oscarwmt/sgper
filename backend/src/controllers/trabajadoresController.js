@@ -12,7 +12,7 @@ export const getTrabajadores = async (req, res) => {
     // Consulta paginada
     const query = `
       SELECT * FROM trabajadores
-      WHERE nombre ILIKE $1 OR apellidos ILIKE $1 OR rut ILIKE $1
+      WHERE activo = true AND (nombre ILIKE $1 OR apellidos ILIKE $1 OR rut ILIKE $1)
       ORDER BY id
       LIMIT $2 OFFSET $3
     `;
@@ -23,7 +23,7 @@ export const getTrabajadores = async (req, res) => {
     // Conteo total
     const countResult = await pool.query(
       `SELECT COUNT(*) FROM trabajadores 
-       WHERE nombre ILIKE $1 OR apellidos ILIKE $1 OR rut ILIKE $1`,
+       WHERE activo = true AND (nombre ILIKE $1 OR apellidos ILIKE $1 OR rut ILIKE $1)`,
       [`%${filtro}%`]
     );
 
@@ -44,11 +44,29 @@ export const getTrabajadores = async (req, res) => {
   }
 };
 
+// === Desactivar Trabajador ===
+export const desactivarTrabajador = async (req, res) => {
+  const id = parseInt(req.params.id);
+  try {
+    const result = await pool.query(
+      "UPDATE trabajadores SET activo = false WHERE id = $1 RETURNING *",
+      [id]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: true, message: "Trabajador no encontrado" });
+    }
+    res.json({ error: false, message: "Trabajador desactivado", data: result.rows[0] });
+  } catch (error) {
+    console.error("Error al desactivar trabajador:", error);
+    res.status(500).json({ error: true, message: "Error del servidor" });
+  }
+};
+
 // === GET /api/trabajadores/:id ===
 export const getTrabajadorById = async (req, res) => {
   try {
     const { id } = req.params;
-    const query = `SELECT * FROM trabajadores WHERE id = $1`;
+    const query = `SELECT * FROM trabajadores WHERE activo = true AND id = $1`;
     const { rows } = await pool.query(query, [id]);
 
     if (rows.length === 0) {

@@ -50,6 +50,8 @@ ReactDOM.createRoot(document.getElementById("root")).render(
             }
           >
             <Route index element={<Navigate to="/dashboard/trabajadores" replace />} />
+            <Route path="/dashboard/trabajadores/editar/:id" element={<TrabajadorForm />} />
+
 
             <Route path="trabajadores">
               <Route index element={<DatosPersonales />} />

@@ -143,7 +143,6 @@ const schema = yup.object().shape({
  * Contiene todo el formulario con validación y lógica de carga de datos relacionados.
  */
 
-
 export default function TrabajadorForm() {
   const { id } = useParams();
   const modoEdicion = !!id;   // true si hay ID => edición
@@ -251,8 +250,8 @@ export default function TrabajadorForm() {
           headers: { Authorization: `Bearer ${token}` },
         })
         .then(({ data }) => {
-          reset(data);
-        })
+          reset(data.data); // Accedé al contenido real
+        })        
         .catch(() => {
           setErrorGeneral("No se pudo cargar el trabajador");
         })
