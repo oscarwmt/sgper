@@ -1,384 +1,209 @@
-// src/pages/trabajadores/TrabajadorForm.jsx
-
-// === IMPORTACIONES DE LIBRERÍAS Y COMPONENTES ===
-import { useEffect, useState, useContext } from "react";
+import React, { useEffect, useState, useContext } from "react";
 import { useForm } from "react-hook-form";
-import { useNavigate, useParams } from "react-router-dom";
 import * as yup from "yup";
 import { yupResolver } from "@hookform/resolvers/yup";
 import axios from "axios";
-import { useAuth } from "../../context/AuthContext";
-import { toast } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
+import { AuthContext } from "../../context/AuthContext";
 
-
-// === FUNCIONES AUXILIARES ===
-
-/**
- * Valida un RUT chileno (formato: 12.345.678-9)
- * @param {string} rut - El RUT a validar
- * @returns {boolean} - Si es válido o no
- */
-function validarRut(rut) {
-  if (!rut || typeof rut !== "string") return false;
-  const [numero, dvIngresado] = rut.split("-");
-  if (!numero || !dvIngresado) return false;
-  const cleanRut = numero.replace(/\./g, "");
-  if (!/^\d+$/.test(cleanRut)) return false;
-
-  const calcularDV = (num) => {
-    let suma = 0,
-      multiplo = 2;
-    for (let i = num.length - 1; i >= 0; i--) {
-      suma += parseInt(num[i]) * multiplo;
-      multiplo = multiplo === 7 ? 2 : multiplo + 1;
-    }
-    const dv = 11 - (suma % 11);
-    return dv === 11 ? "0" : dv === 10 ? "K" : dv.toString();
-  };
-
-  return calcularDV(cleanRut) === dvIngresado.toUpperCase();
-}
-
-// === ESQUEMA DE VALIDACIÓN CON YUP ===
-
-/**
- * Esquema de validación para el formulario de trabajadores.
- * Incluye reglas para todos los campos del formulario.
- */
 const schema = yup.object().shape({
-  // Campo: RUT
-  rut: yup.string().required("RUT es obligatorio").test("valido", "RUT inválido", validarRut),
-
-  // Campo: Nombre
-  nombre: yup.string().required("Nombre es obligatorio").min(3),
-
-  // Campo: Apellidos
-  apellidos: yup.string().required("Apellidos son obligatorios").min(3),
-
-  // Campo: Correo electrónico
-  correo: yup.string().required("Correo es obligatorio").email(),
-
-  // Campo: Teléfono (opcional con formato chileno)
-  telefono: yup.string().nullable().matches(/^(\+?56)?\s?9\s?\d{4}\s?\d{4}$/, {
-    message: "Teléfono inválido",
-    excludeEmptyString: true,
-  }),
-
-  // Campo: Fecha de nacimiento
-  fechaNacimiento: yup.string().required("Fecha de nacimiento es obligatoria"),
-
-  // Campo: Estado civil
-  estadoCivil: yup.string().required("Estado civil es obligatorio"),
-
-  // Campo: Hijos
-  hijos: yup.number().min(0).required(),
-
-  // Campo: Dirección
-  direccion: yup.string().required("Dirección es obligatoria"),
-
-  // Campo: Casa / Bloque / Depto
-  casaBloqueDepto: yup.string(),
-
-  // Campo: Comuna ID
-  comunaId: yup.string().required("Debe seleccionar una comuna"),
-
-  // Campo: Ciudad
-  ciudad: yup.string().required("Ciudad es obligatoria"),
-
-  // Campo: Departamento ID
-  departamentoId: yup.string().required("Debe seleccionar un departamento"),
-
-  // Campo: Cargo ID
-  cargoId: yup.string().required("Debe seleccionar un cargo"),
-
-  // Campo: Tipo de contrato
-  tipoContrato: yup.string().required("Tipo de contrato es obligatorio"),
-
-  // Campo: Cantidad de duración (solo si no es indefinido)
-  cantidadDuracion: yup
-  .number()
-  .transform((value, originalValue) => (originalValue === "" ? null : value))
-  .nullable()
-  .when("tipoContrato", {
-    is: (val) => val !== "Indefinido",
-    then: (schema) =>
-      schema.required("Campo obligatorio si no es indefinido").positive("Debe ser mayor a cero"),
-    otherwise: (schema) => schema.nullable(),
-  }),
-
-  // Campo: Unidad de duración (solo si no es indefinido)
-  unidadDuracion: yup
+  rut: yup
     .string()
-    .nullable()
-    .when("tipoContrato", {
-      is: (val) => val !== "Indefinido",
-      then: (schema) => schema.required("Seleccione unidad de duración"),
-      otherwise: (schema) => schema.nullable(),
-    }),
+    .required("El RUT es obligatorio")
+    .matches(
+      /^0*(\d{1,3}(\.?\d{3})*)\-?([\dkK])$/,
+      "Formato de RUT inválido"
+    ),
+  nombre: yup.string().required("El nombre es obligatorio"),
+  apellidos: yup.string().required("Los apellidos son obligatorios"),
+  correo: yup.string().email("Correo inválido").required("Correo es obligatorio"),
+  telefono: yup.string().nullable(),
+  fechaNacimiento: yup.date().required("Fecha de nacimiento es obligatoria"),
+  estadoCivil: yup.string().required("Estado civil es obligatorio"),
+  direccion: yup.string().required("La dirección es obligatoria"),
+  casaBloqueDepto: yup.string().nullable(),
+  ciudad: yup.string().required("La ciudad es obligatoria"),
+  cv: yup.mixed().nullable(),
+  certificadoAntecedentes: yup.mixed().nullable(),
+  certificadoAFP: yup.mixed().nullable(),
+  funIsapre: yup.mixed().nullable(),
+  cargoId: yup.number()
+  .typeError("Debe seleccionar un cargo válido")
+  .required("El cargo es obligatorio"),
 
-  // Campo: Jornada laboral ID
-  jornadaLaboralId: yup.string().required("Debe seleccionar una jornada"),
+  departamentoId: yup.number()
+    .typeError("Debe seleccionar un departamento válido")
+    .required("El departamento es obligatorio"),
 
-  // Campo: Gratificación tipo
-  gratificacionTipo: yup.string().required("Seleccione tipo de gratificación"),
+  comunaId: yup.number()
+    .typeError("Debe seleccionar una comuna válida")
+    .required("La comuna es obligatoria"),
 
-  // Campo: Monto de gratificación (solo si es fija)
-  gratificacionMonto: yup
-    .number()
-    .transform((value, originalValue) => (originalValue === "" ? null : value))
-    .nullable()
-    .when("gratificacionTipo", {
-      is: "Fija",
-      then: (schema) =>
-        schema.required("Monto obligatorio si es fija").positive("Monto debe ser positivo"),
-      otherwise: (schema) => schema.nullable(),
-    }),
+    hijos: yup.number()
+    .transform((value, originalValue) =>
+      String(originalValue).trim() === "" ? 0 : Number(originalValue)
+    )
+    .typeError("Debe ser un número")
+    .min(0, "No puede ser negativo"),
 });
 
-// === COMPONENTE PRINCIPAL: TrabajadorForm ===
-
-/**
- * Componente principal para crear o editar un trabajador.
- * Contiene todo el formulario con validación y lógica de carga de datos relacionados.
- */
-
-export default function TrabajadorForm() {
-  const { id } = useParams();
-  const modoEdicion = !!id;   // true si hay ID => edición
-  const navigate = useNavigate();
-  const { token } = useAuth();
-  const API_URL = import.meta.env.VITE_API_URL;
-
+const TrabajadorForm = ({ id, onSuccess }) => {
+  const { user } = useContext(AuthContext); // usuario con empresa_id
   const [cargando, setCargando] = useState(false);
   const [errorGeneral, setErrorGeneral] = useState("");
-  const [ciudades, setCiudades] = useState([]);
+  const [comunas, setComunas] = useState([]);
   const [departamentos, setDepartamentos] = useState([]);
   const [cargos, setCargos] = useState([]);
-  const [comunas, setComunas] = useState([]);
-  const [jornadas, setJornadas] = useState([]);
+  const [departamentoSeleccionado, setDepartamentoSeleccionado] = useState(null);
 
   const {
     register,
     handleSubmit,
-    setValue,
     watch,
-    reset,
+    setValue,
     formState: { errors },
-  } = useForm({ resolver: yupResolver(schema) });
+  } = useForm({
+    resolver: yupResolver(schema),
+    defaultValues: {
+      rut: "",
+      nombre: "",
+      apellidos: "",
+      correo: "",
+      telefono: "",
+      fechaNacimiento: "",
+      estadoCivil: "",
+      hijos: 0,
+      direccion: "",
+      casaBloqueDepto: "",
+      ciudad: "",
+      comunaId: "",
+      departamentoId: "",
+      cargoId: "",
+      cv: null,
+      certificadoAntecedentes: null,
+      certificadoAFP: null,
+      funIsapre: null,
+    },
+  });
 
-  const tipoContrato = watch("tipoContrato");
-  const gratificacionTipo = watch("gratificacionTipo");
-  const departamentoSeleccionado = watch("departamentoId");
+  const departamentoId = watch("departamentoId");
 
   useEffect(() => {
-    const tipo = watch("tipoContrato");
-    if (tipo === "Indefinido") {
-      setValue("cantidadDuracion", null);
-      setValue("unidadDuracion", null);
-    }
-  }, [watch("tipoContrato")]);
-  
-  useEffect(() => {
-    const tipoGrat = watch("gratificacionTipo");
-    if (tipoGrat !== "Fija") {
-      setValue("gratificacionMonto", null);
-    }
-  }, [watch("gratificacionTipo")]);
-  
-  // Cargar listados
-  useEffect(() => {
-    if (!token) return;
-    const cargarListados = async () => {
-      try {
-        const headers = { Authorization: `Bearer ${token}` };
-
-        const [resDepartamentos, resJornadas, resComunas] = await Promise.all([
-          axios.get(`${API_URL}/api/departamento`, { headers }),
-          axios.get(`${API_URL}/api/jornadas`, { headers }),
-          axios.get(`${API_URL}/api/comunas`, { headers }),
-        ]);
-
-        // Procesar comunas
-        let comunasData = [];
-        if (Array.isArray(resComunas.data)) {
-          comunasData = [...resComunas.data];
-        } else if (Array.isArray(resComunas.data?.data)) {
-          comunasData = [...resComunas.data.data];
-        }
-
-        setComunas(comunasData);
-
-        // Procesar departamentos
-        let departamentosData = [];
-        if (Array.isArray(resDepartamentos.data)) {
-          departamentosData = [...resDepartamentos.data];
-        } else if (Array.isArray(resDepartamentos.data?.data)) {
-          departamentosData = [...resDepartamentos.data.data];
-        }
-
-        setDepartamentos(departamentosData);
-
-        // Procesar jornadas
-        let jornadasData = [];
-        if (Array.isArray(resJornadas.data)) {
-          jornadasData = [...resJornadas.data];
-        } else if (Array.isArray(resJornadas.data?.data)) {
-          jornadasData = [...resJornadas.data.data];
-        }
-
-        setJornadas(jornadasData);
-
-      } catch (err) {
-        console.error("Error al cargar listados:", err.message || err.response?.data || err);
-        setErrorGeneral("No se pudieron cargar algunos datos. Verifica tu conexión.");
-        setDepartamentos([]);
-        setJornadas([]);
-        setComunas([]);
-      }
-    };
-
-    cargarListados();
-  }, [token]);
-
-  // Cargar trabajador si es edición
-  useEffect(() => {
-    if (id && token) {
-      setCargando(true);
+    if (departamentoId) {
+      setDepartamentoSeleccionado(departamentoId);
+      // Filtrar cargos según departamento seleccionado
       axios
-        .get(`${API_URL}/api/trabajadores/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        .then(({ data }) => {
-          reset(data.data); // Accedé al contenido real
-        })        
-        .catch(() => {
-          setErrorGeneral("No se pudo cargar el trabajador");
-        })
-        .finally(() => setCargando(false));
-    }
-  }, [id, token, reset]);
-
-  // Cargar cargos según departamento
-  useEffect(() => {
-    if (departamentoSeleccionado && !isNaN(departamentoSeleccionado) && token) {
-      axios
-        .get(`${API_URL}/api/cargos?departamentoId=${departamentoSeleccionado}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        .then(({ data }) => {
-          const cargosData = Array.isArray(data?.data)
-            ? data.data
-            : Array.isArray(data)
-            ? data
-            : [];
-
-          setCargos(cargosData);
-
-          if (cargosData.length > 0 && watch("cargoId")) {
-            const cargoExiste = cargosData.some((c) => c.id === watch("cargoId"));
-            if (!cargoExiste) setValue("cargoId", "");
-          }
-        })
-        .catch((err) => {
-          console.error("Error al cargar cargos:", err);
-          setCargos([]);
-        });
+        .get(`/api/cargos?id_departamentos=${departamentoId}`)
+        .then((res) => setCargos(res.data))
+        .catch(() => setCargos([]));
     } else {
+      setDepartamentoSeleccionado(null);
       setCargos([]);
     }
-  }, [departamentoSeleccionado, token]);
+  }, [departamentoId]);
 
-  const onSubmit = async (datos) => {
-    console.log("1. onSubmit - Inicio de la función.");
+  useEffect(() => {
+    // Cargar comunas y departamentos para selects
+    setCargando(true);
+    Promise.all([
+      axios.get("/api/comunas"),
+      axios.get("/api/departamentos"),
+    ])
+    .then(([comunasRes, departamentosRes]) => {
+      setComunas(Array.isArray(comunasRes.data) ? comunasRes.data : comunasRes.data.data || []);
+      setDepartamentos(Array.isArray(departamentosRes.data) ? departamentosRes.data : departamentosRes.data.data || []);
+    })    
+      .catch(() => {
+        setErrorGeneral("Error cargando datos de comunas o departamentos");
+      })
+      .finally(() => setCargando(false));
+  }, []);
+
+  useEffect(() => {
+    if (id) {
+      // Cargar datos para editar
+      setCargando(true);
+      axios
+        .get(`/api/trabajadores/${id}`)
+        .then(({ data }) => {
+          for (const key in data) {
+            if (key in schema.fields) {
+              setValue(key, data[key]);
+            }
+          }
+          setDepartamentoSeleccionado(data.departamentoId);
+        })
+        .catch(() => setErrorGeneral("Error cargando datos del trabajador"))
+        .finally(() => setCargando(false));
+    }
+  }, [id, setValue]);
+
+  const onSubmit = async (data) => {
     setErrorGeneral("");
     setCargando(true);
   
-    if (!token) {
-      console.log("1a. onSubmit - Token no presente. Deteniendo envío.");
-      setErrorGeneral("No tienes sesión iniciada");
-      setCargando(false);
-      return;
-    }
-  
     try {
-      // Armado de objeto limpio según condiciones
-      const datosLimpios = {
-        ...datos,
-        hijos: parseInt(datos.hijos),
-        comunaId: datos.comunaId ? parseInt(datos.comunaId) : null,
-        departamentoId: datos.departamentoId ? parseInt(datos.departamentoId) : null,
-        cargoId: datos.cargoId ? parseInt(datos.cargoId) : null,
-        cantidadDuracion:
-          datos.tipoContrato !== "Indefinido" && datos.cantidadDuracion
-            ? parseInt(datos.cantidadDuracion)
-            : null,
-        unidadDuracion: datos.tipoContrato !== "Indefinido" ? datos.unidadDuracion : null,
-        jornadaLaboralId: datos.jornadaLaboralId ? parseInt(datos.jornadaLaboralId) : null,
-        gratificacionMonto:
-          datos.gratificacionTipo === "Fija" && datos.gratificacionMonto
-            ? parseFloat(datos.gratificacionMonto)
-            : null,
-      };
+      const formData = new FormData();
   
-      console.log("2. onSubmit - Datos limpios preparados:", datosLimpios);
+      const camposNumericos = ["comunaId", "departamentoId", "cargoId", "hijos"];
+      const camposArchivos = ["cv", "certificadoAntecedentes", "certificadoAFP", "funIsapre"];
   
-      const metodo = modoEdicion ? "put" : "post";
-      const url = modoEdicion
-        ? `${API_URL}/api/trabajadores/${id}`
-        : `${API_URL}/api/trabajadores`;
+      for (const key in data) {
+        if (camposArchivos.includes(key)) {
+          const file = data[key]?.[0];
+          if (file) formData.append(key, file);
+        } else if (key === "fechaNacimiento") {
+          const fecha = new Date(data[key]);
+          if (!isNaN(fecha.getTime())) {
+            formData.append(key, fecha.toISOString().split("T")[0]);
+          } else {
+            formData.append(key, null);
+          }
+        } else if (camposNumericos.includes(key)) {
+          const numero = Number(data[key]);
+          formData.append(key, !isNaN(numero) ? numero : null);
+        } else {
+          formData.append(key, data[key]);
+        }
+      }
   
-      console.log(`3. onSubmit - Realizando petición ${metodo.toUpperCase()} a URL: ${url}`);
+      formData.append("empresa_id", user.empresa_id);
   
-      const response = await axios[metodo](url, datosLimpios, {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      if (id) {
+        await axios.put(`/api/trabajadores/${id}`, formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+      } else {
+        await axios.post("/api/trabajadores", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+      }
   
-      console.log("4. onSubmit - Petición Axios completada. Respuesta:", response.data);
-  
-      toast.success(
-        modoEdicion
-          ? "Trabajador actualizado correctamente"
-          : "Trabajador creado correctamente"
+      if (onSuccess) onSuccess();
+    } catch (error) {
+      console.error("Error al guardar trabajador:", error);
+      setErrorGeneral(
+        error.response?.data?.message || "Error al guardar trabajador"
       );
-  
-      reset();
-      navigate("/trabajadores");
-      console.log("5. onSubmit - Navegando a /trabajadores.");
-    } catch (err) {
-      console.error(
-        "X. onSubmit - Error capturado en el try-catch:",
-        err.response?.data || err.message
-      );
-      const msg =
-        err?.response?.data?.message || "Error al guardar el trabajador.";
-      setErrorGeneral(msg);
-      toast.error("Error al guardar trabajador");
     } finally {
-      console.log("Y. onSubmit - Bloque finally ejecutado. Cargando a false.");
       setCargando(false);
     }
   };
   
   
+  
 
-
-  // === RENDERIZADO DEL COMPONENTE ===
+  console.log("comunas", comunas);
+  console.log("departamentos", departamentos);
+  console.log("cargos", cargos);
 
   return (
     <div className="max-w-4xl mx-auto p-4 bg-white rounded shadow">
-      {/* Título del formulario */}
       <h1 className="text-2xl font-bold mb-4">
         {id ? "Editar Trabajador" : "Crear Trabajador"}
       </h1>
 
-      {/* Mensaje de error global */}
       {errorGeneral && <p className="text-red-600 mb-4">{errorGeneral}</p>}
 
-      {/* Vista de carga */}
       {cargando ? (
         <p>Cargando...</p>
       ) : (
@@ -387,6 +212,7 @@ export default function TrabajadorForm() {
           <section className="mb-6">
             <h2 className="text-xl font-semibold mb-2">Datos Personales</h2>
             <div className="grid grid-cols-2 gap-4">
+              {/* RUT */}
               <div>
                 <label htmlFor="rut" className="block mb-1 font-medium">
                   RUT
@@ -402,11 +228,11 @@ export default function TrabajadorForm() {
                   disabled={!!id}
                 />
                 {errors.rut && (
-                  <p className="text-red-600 text-sm mt-1">
-                    {errors.rut.message}
-                  </p>
+                  <p className="text-red-600 text-sm mt-1">{errors.rut.message}</p>
                 )}
               </div>
+
+              {/* Nombre */}
               <div>
                 <label htmlFor="nombre" className="block mb-1 font-medium">
                   Nombre(s)
@@ -420,11 +246,11 @@ export default function TrabajadorForm() {
                   }`}
                 />
                 {errors.nombre && (
-                  <p className="text-red-600 text-sm mt-1">
-                    {errors.nombre.message}
-                  </p>
+                  <p className="text-red-600 text-sm mt-1">{errors.nombre.message}</p>
                 )}
               </div>
+
+              {/* Apellidos */}
               <div>
                 <label htmlFor="apellidos" className="block mb-1 font-medium">
                   Apellidos
@@ -438,11 +264,11 @@ export default function TrabajadorForm() {
                   }`}
                 />
                 {errors.apellidos && (
-                  <p className="text-red-600 text-sm mt-1">
-                    {errors.apellidos.message}
-                  </p>
+                  <p className="text-red-600 text-sm mt-1">{errors.apellidos.message}</p>
                 )}
               </div>
+
+              {/* Correo */}
               <div>
                 <label htmlFor="correo" className="block mb-1 font-medium">
                   Correo Electrónico
@@ -456,35 +282,31 @@ export default function TrabajadorForm() {
                   }`}
                 />
                 {errors.correo && (
-                  <p className="text-red-600 text-sm mt-1">
-                    {errors.correo.message}
-                  </p>
+                  <p className="text-red-600 text-sm mt-1">{errors.correo.message}</p>
                 )}
               </div>
+
+              {/* Teléfono */}
               <div>
                 <label htmlFor="telefono" className="block mb-1 font-medium">
-                  Teléfono (opcional)
+                  Teléfono
                 </label>
                 <input
                   id="telefono"
-                  type="text"
+                  type="tel"
                   {...register("telefono")}
                   className={`w-full border p-2 rounded ${
                     errors.telefono ? "border-red-600" : "border-gray-300"
                   }`}
-                  placeholder="+56 9 1234 5678"
                 />
                 {errors.telefono && (
-                  <p className="text-red-600 text-sm mt-1">
-                    {errors.telefono.message}
-                  </p>
+                  <p className="text-red-600 text-sm mt-1">{errors.telefono.message}</p>
                 )}
               </div>
+
+              {/* Fecha Nacimiento */}
               <div>
-                <label
-                  htmlFor="fechaNacimiento"
-                  className="block mb-1 font-medium"
-                >
+                <label htmlFor="fechaNacimiento" className="block mb-1 font-medium">
                   Fecha de Nacimiento
                 </label>
                 <input
@@ -501,6 +323,8 @@ export default function TrabajadorForm() {
                   </p>
                 )}
               </div>
+
+              {/* Estado Civil */}
               <div>
                 <label htmlFor="estadoCivil" className="block mb-1 font-medium">
                   Estado Civil
@@ -512,47 +336,45 @@ export default function TrabajadorForm() {
                     errors.estadoCivil ? "border-red-600" : "border-gray-300"
                   }`}
                 >
-                  <option value="">Selecciona una opción</option>
-                  <option value="Soltero">Soltero</option>
-                  <option value="Casado">Casado</option>
-                  <option value="Viudo">Viudo</option>
-                  <option value="Separado">Separado</option>
+                  <option value="">Seleccione...</option>
+                  <option value="soltero">Soltero(a)</option>
+                  <option value="casado">Casado(a)</option>
+                  <option value="viudo">Viudo(a)</option>
+                  <option value="divorciado">Divorciado(a)</option>
                 </select>
                 {errors.estadoCivil && (
-                  <p className="text-red-600 text-sm mt-1">
-                    {errors.estadoCivil.message}
-                  </p>
+                  <p className="text-red-600 text-sm mt-1">{errors.estadoCivil.message}</p>
                 )}
               </div>
+
+              {/* Hijos */}
               <div>
                 <label htmlFor="hijos" className="block mb-1 font-medium">
-                  Hijos (cantidad)
+                  Cantidad de Hijos
                 </label>
                 <input
                   id="hijos"
                   type="number"
                   min="0"
-                  {...register("hijos", { valueAsNumber: true })}
+                  {...register("hijos")}
                   className={`w-full border p-2 rounded ${
                     errors.hijos ? "border-red-600" : "border-gray-300"
                   }`}
                 />
                 {errors.hijos && (
-                  <p className="text-red-600 text-sm mt-1">
-                    {errors.hijos.message}
-                  </p>
+                  <p className="text-red-600 text-sm mt-1">{errors.hijos.message}</p>
                 )}
               </div>
             </div>
           </section>
 
-          {/* Datos de Contacto */}
+          {/* Dirección */}
           <section className="mb-6">
-            <h2 className="text-xl font-semibold mb-2">Datos de Contacto</h2>
+            <h2 className="text-xl font-semibold mb-2">Dirección</h2>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label htmlFor="direccion" className="block mb-1 font-medium">
-                  Dirección (Calle y Número)
+                  Dirección
                 </label>
                 <input
                   id="direccion"
@@ -563,25 +385,32 @@ export default function TrabajadorForm() {
                   }`}
                 />
                 {errors.direccion && (
-                  <p className="text-red-600 text-sm mt-1">
-                    {errors.direccion.message}
-                  </p>
+                  <p className="text-red-600 text-sm mt-1">{errors.direccion.message}</p>
                 )}
               </div>
+
               <div>
                 <label
                   htmlFor="casaBloqueDepto"
                   className="block mb-1 font-medium"
                 >
-                  Casa / Bloque / Depto (opcional)
+                  Casa / Bloque / Depto
                 </label>
                 <input
                   id="casaBloqueDepto"
                   type="text"
                   {...register("casaBloqueDepto")}
-                  className="w-full border p-2 rounded border-gray-300"
+                  className={`w-full border p-2 rounded ${
+                    errors.casaBloqueDepto ? "border-red-600" : "border-gray-300"
+                  }`}
                 />
+                {errors.casaBloqueDepto && (
+                  <p className="text-red-600 text-sm mt-1">
+                    {errors.casaBloqueDepto.message}
+                  </p>
+                )}
               </div>
+
               <div>
                 <label htmlFor="ciudad" className="block mb-1 font-medium">
                   Ciudad
@@ -595,54 +424,41 @@ export default function TrabajadorForm() {
                   }`}
                 />
                 {errors.ciudad && (
-                  <p className="text-red-600 text-sm mt-1">
-                    {errors.ciudad.message}
-                  </p>
+                  <p className="text-red-600 text-sm mt-1">{errors.ciudad.message}</p>
                 )}
               </div>
-              <div className="mb-4">
+
+              <div>
                 <label htmlFor="comunaId" className="block mb-1 font-medium">
-                    Comuna
+                  Comuna
                 </label>
-                <select id="comunaId"
-                    {...register("comunaId")}
-                    className={`w-full border p-2 rounded ${
+                <select
+                  id="comunaId"
+                  {...register("comunaId")}
+                  className={`w-full border p-2 rounded ${
                     errors.comunaId ? "border-red-600" : "border-gray-300"
-                    }`}
+                  }`}
                 >
-                    <option value="">Selecciona una comuna</option>
-                    {Array.isArray(comunas) && comunas.length > 0 ? (
-                    comunas.map((c) => {
-                        if (!c || !("id" in c) || !("nombre" in c)) {
-                        console.warn("Comuna inválida:", c);
-                        return null;
-                        }
-                        return (
-                        <option key={c.id} value={c.id}>
-                            {c.nombre}
-                        </option>
-                        );
-                    })
-                    ) : (
-                    <option disabled>No hay comunas disponibles</option>
-                    )}
+                  <option value="">Seleccione...</option>
+                  {comunas.map((c, idx) => (
+                  <option key={c?.id ?? `comuna-${idx}`} value={c?.id}>
+                    {c?.nombre}
+                  </option>
+                ))}
                 </select>
                 {errors.comunaId && (
-                    <p className="text-red-600 text-sm mt-1">{errors.comunaId.message}</p>
+                  <p className="text-red-600 text-sm mt-1">{errors.comunaId.message}</p>
                 )}
-                </div>
+              </div>
             </div>
           </section>
 
-          {/* Datos Profesionales */}
+          {/* Departamento y Cargo */}
           <section className="mb-6">
-            <h2 className="text-xl font-semibold mb-2">Datos Profesionales</h2>
+            <h2 className="text-xl font-semibold mb-2">Información Laboral</h2>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label
-                  htmlFor="departamentoId"
-                  className="block mb-1 font-medium"
-                >
+                <label htmlFor="departamentoId" className="block mb-1 font-medium">
                   Departamento
                 </label>
                 <select
@@ -652,15 +468,13 @@ export default function TrabajadorForm() {
                     errors.departamentoId ? "border-red-600" : "border-gray-300"
                   }`}
                 >
-                  {Array.isArray(departamentos) && departamentos.length > 0 ? (
-                  departamentos.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.nombre}
-                    </option>
-                  ))
-                ) : (
-                  <option disabled>No hay departamentos disponibles</option>
-                )}
+                  <option value="">Seleccione...</option>
+                  {departamentos.map((d) => (
+                  <option key={d.id_departamentos} value={d.id_departamentos}>
+                    {d.nombre}
+                  </option>
+                ))}
+
                 </select>
                 {errors.departamentoId && (
                   <p className="text-red-600 text-sm mt-1">
@@ -668,225 +482,117 @@ export default function TrabajadorForm() {
                   </p>
                 )}
               </div>
+
               <div>
                 <label htmlFor="cargoId" className="block mb-1 font-medium">
                   Cargo
                 </label>
-                <select
-                  id="cargoId"
-                  {...register("cargoId")}
-                  className={`w-full border p-2 rounded ${
-                    errors.cargoId ? "border-red-600" : "border-gray-300"
-                  }`}
-                  disabled={!departamentoSeleccionado}
-                >
-                  <option value="">Selecciona un cargo</option>
-                  {Array.isArray(cargos) && cargos.length > 0 ? (
-                  cargos.map((c) => (
-                    <option key={c.id} value={c.id}>
+                <select {...register("cargoId")}>
+                  <option value="">Seleccione...</option>
+                  {cargos.map((c) => (
+                    <option key={c.id_cargo} value={c.id_cargo}>
                       {c.nombre}
                     </option>
-                  ))
-                ) : (
-                  <option disabled>No hay cargos disponibles</option>
-                )}
+                  ))}
                 </select>
                 {errors.cargoId && (
-                  <p className="text-red-600 text-sm mt-1">
-                    {errors.cargoId.message}
-                  </p>
+                  <p className="text-red-600 text-sm mt-1">{errors.cargoId.message}</p>
                 )}
               </div>
             </div>
           </section>
 
-          {/* Contrato Laboral */}
+          {/* Archivos */}
           <section className="mb-6">
-            <h2 className="text-xl font-semibold mb-2">Contrato Laboral</h2>
-            <div className="grid grid-cols-2 gap-4">
+            <h2 className="text-xl font-semibold mb-2">Cargas de Archivos</h2>
+            <div className="grid grid-cols-1 gap-4">
               <div>
-                <label
-                  htmlFor="tipoContrato"
-                  className="block mb-1 font-medium"
-                >
-                  Tipo de Contrato
+                <label htmlFor="cv" className="block mb-1 font-medium">
+                  CV (PDF o DOC)
                 </label>
-                <select
-                  id="tipoContrato"
-                  {...register("tipoContrato")}
+                <input
+                  id="cv"
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  {...register("cv")}
                   className={`w-full border p-2 rounded ${
-                    errors.tipoContrato ? "border-red-600" : "border-gray-300"
+                    errors.cv ? "border-red-600" : "border-gray-300"
                   }`}
-                >
-                  <option value="">Selecciona una opción</option>
-                  <option value="Plazo Fijo">Plazo Fijo</option>
-                  <option value="Indefinido">Indefinido</option>
-                  <option value="Por Obra">Por Obra</option>
-                  <option value="Honorarios">Honorarios</option>
-                  <option value="Otro">Otro</option>
-                </select>
-                {errors.tipoContrato && (
+                />
+                {errors.cv && (
+                  <p className="text-red-600 text-sm mt-1">{errors.cv.message}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="certificadoAntecedentes" className="block mb-1 font-medium">
+                  Certificado de Antecedentes
+                </label>
+                <input
+                  id="certificadoAntecedentes"
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  {...register("certificadoAntecedentes")}
+                  className={`w-full border p-2 rounded ${
+                    errors.certificadoAntecedentes ? "border-red-600" : "border-gray-300"
+                  }`}
+                />
+                {errors.certificadoAntecedentes && (
                   <p className="text-red-600 text-sm mt-1">
-                    {errors.tipoContrato.message}
+                    {errors.certificadoAntecedentes.message}
                   </p>
                 )}
               </div>
 
-              {tipoContrato !== "Indefinido" && (
-                <div className="flex gap-4 items-end">
-                <div className="w-1/2">
-                  <label
-                    htmlFor="cantidadDuracion"
-                    className="block mb-1 font-medium"
-                  >
-                    Duración
-                  </label>
-                  <input
-                    id="cantidadDuracion"
-                    type="number"
-                    {...register("cantidadDuracion", { valueAsNumber: true })}
-                    className={`w-16 border p-2 rounded ${
-                      errors.cantidadDuracion ? "border-red-600" : "border-gray-300"
-                    }`}
-                    placeholder="Ej. 12"
-                  />
-                  {errors.cantidadDuracion && (
-                    <p className="text-red-600 text-sm mt-1">
-                      {errors.cantidadDuracion.message}
-                    </p>
-                  )}
-                </div>
-              
-                <div className="w-1/2">
-                  <label
-                    htmlFor="unidadDuracion"
-                    className="sr-only" // Oculta visualmente la etiqueta, pero accesible para lectores de pantalla
-                  >
-                    Unidad de Duración
-                  </label>
-                  <select
-                    id="unidadDuracion"
-                    {...register("unidadDuracion")}
-                    className={`w-full border p-2 rounded ${
-                      errors.unidadDuracion ? "border-red-600" : "border-gray-300"
-                    }`}
-                    defaultValue="Meses"
-                  >
-                    <option value="">Selecciona una unidad</option>
-                    <option value="Días">Días</option>
-                    <option value="Meses">Meses</option>
-                  </select>
-                  {errors.unidadDuracion && (
-                    <p className="text-red-600 text-sm mt-1">
-                      {errors.unidadDuracion.message}
-                    </p>
-                  )}
-                </div>
-              </div>
-              )}
-
-                <div>
-                <label htmlFor="jornadaLaboralId" className="block mb-1 font-medium">
-                    Jornada Laboral
+              <div>
+                <label htmlFor="certificadoAFP" className="block mb-1 font-medium">
+                  Certificado AFP
                 </label>
-                <select
-                    id="jornadaLaboralId"
-                    {...register("jornadaLaboralId")}
-                    className={`w-full border p-2 rounded ${
-                    errors.jornadaLaboralId ? "border-red-600" : "border-gray-300"
-                    }`}
-                >
-                    <option value="">Selecciona una jornada</option>
-                    {jornadas && Array.isArray(jornadas) && jornadas.length > 0 ? (
-                    jornadas.map((j) => (
-                        <option key={j.id} value={j.id}>
-                        {j.nombre}
-                        </option>
-                    ))
-                    ) : (
-                    <option disabled>No hay jornadas disponibles</option>
-                    )}
-                </select>
-                {errors.jornadaLaboralId && (
-                    <p className="text-red-600 text-sm mt-1">
-                    {errors.jornadaLaboralId.message}
-                    </p>
+                <input
+                  id="certificadoAFP"
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  {...register("certificadoAFP")}
+                  className={`w-full border p-2 rounded ${
+                    errors.certificadoAFP ? "border-red-600" : "border-gray-300"
+                  }`}
+                />
+                {errors.certificadoAFP && (
+                  <p className="text-red-600 text-sm mt-1">{errors.certificadoAFP.message}</p>
                 )}
-                </div>
+              </div>
 
               <div>
-                <label
-                  htmlFor="gratificacionTipo"
-                  className="block mb-1 font-medium"
-                >
-                  Gratificación
+                <label htmlFor="funIsapre" className="block mb-1 font-medium">
+                  Formulario FUN Isapre
                 </label>
-                <select
-                  id="gratificacionTipo"
-                  {...register("gratificacionTipo")}
+                <input
+                  id="funIsapre"
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  {...register("funIsapre")}
                   className={`w-full border p-2 rounded ${
-                    errors.gratificacionTipo ? "border-red-600" : "border-gray-300"
+                    errors.funIsapre ? "border-red-600" : "border-gray-300"
                   }`}
-                >
-                  <option value="">Selecciona una opción</option>
-                  <option value="Fija">Fija</option>
-                  <option value="25% Anual">25% Anual</option>
-                  <option value="Por Utilidades">Por Utilidades</option>
-                </select>
-                {errors.gratificacionTipo && (
-                  <p className="text-red-600 text-sm mt-1">
-                    {errors.gratificacionTipo.message}
-                  </p>
+                />
+                {errors.funIsapre && (
+                  <p className="text-red-600 text-sm mt-1">{errors.funIsapre.message}</p>
                 )}
               </div>
-
-              {gratificacionTipo === "Fija" && (
-                <div>
-                  <label
-                    htmlFor="gratificacionMonto"
-                    className="block mb-1 font-medium"
-                  >
-                    Monto Fijo de Gratificación
-                  </label>
-                  <input
-                    id="gratificacionMonto"
-                    type="number"
-                    step="0.01"
-                    {...register("gratificacionMonto", { valueAsNumber: true })}
-                    className={`w-full border p-2 rounded ${
-                      errors.gratificacionMonto ? "border-red-600" : "border-gray-300"
-                    }`}
-                  />
-                  {errors.gratificacionMonto && (
-                    <p className="text-red-600 text-sm mt-1">
-                      {errors.gratificacionMonto.message}
-                    </p>
-                  )}
-                </div>
-              )}
             </div>
           </section>
 
-          {/* Botones */}
-          <div className="flex justify-between">
-            <button
-              type="button"
-              onClick={() => navigate("/trabajadores")}
-              className="px-4 py-2 border rounded hover:bg-gray-100"
-              disabled={cargando}
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-              disabled={cargando}
-            >
-              {id ? "Guardar Cambios" : "Crear Trabajador"}
-            </button>
-          </div>
+          <button
+            type="submit"
+            disabled={cargando}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded"
+          >
+            {id ? "Actualizar Trabajador" : "Crear Trabajador"}
+          </button>
         </form>
       )}
     </div>
   );
-} 
+};
+
+export default TrabajadorForm;

@@ -8,6 +8,7 @@ import MainLayout from "./layout/MainLayout.jsx";
 
 import DatosPersonales from "./pages/trabajadores/DatosPersonales.jsx";
 import Contratos from "./pages/trabajadores/Contratos.jsx";
+import ContratosLista from "./pages/trabajadores/ContratosLista.jsx";
 import CargosTrabajadores from "./pages/trabajadores/Cargos.jsx";
 import TrabajadorForm from "./pages/trabajadores/TrabajadorForm.jsx";
 import TrabajadorRemuneraciones from "./pages/trabajadores/TrabajadorRemuneraciones.jsx";
@@ -57,6 +58,8 @@ ReactDOM.createRoot(document.getElementById("root")).render(
               <Route index element={<DatosPersonales />} />
               <Route path="datos-personales" element={<DatosPersonales />} />
               <Route path="contratos" element={<Contratos />} />
+              <Route path="contratos/:id" element={<Contratos />} />
+              <Route path="listado-contratos" element={<ContratosLista />} />
               <Route path="cargos" element={<CargosTrabajadores />} />
               <Route path="crear" element={<TrabajadorForm />} />
               <Route path="editar/:id" element={<TrabajadorForm />} />

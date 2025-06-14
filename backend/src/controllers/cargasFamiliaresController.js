@@ -2,22 +2,22 @@ import { pool } from "../db.js";
 
 export const getCargasFamiliares = async (req, res) => {
   try {
-    const { page = 1, limit = 10, trabajador_id } = req.query;
+    const { page = 1, limit = 10, id_trabajadores } = req.query;
     const offset = (page - 1) * limit;
 
     let query = `SELECT * FROM carga_familiar`;
     let countQuery = `SELECT COUNT(*) FROM carga_familiar`;
     const params = [];
-    if (trabajador_id) {
-      query += ` WHERE trabajador_id = $1`;
-      countQuery += ` WHERE trabajador_id = $1`;
-      params.push(trabajador_id);
+    if (id_trabajadores) {
+      query += ` WHERE id_trabajadores = $1`;
+      countQuery += ` WHERE id_trabajadores = $1`;
+      params.push(id_trabajadores);
     }
     query += ` ORDER BY id LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     params.push(limit, offset);
 
     const { rows } = await pool.query(query, params);
-    const countResult = await pool.query(countQuery, trabajador_id ? [trabajador_id] : []);
+    const countResult = await pool.query(countQuery, id_trabajadores ? [id_trabajadores] : []);
 
     const total = parseInt(countResult.rows[0].count);
 
@@ -46,14 +46,14 @@ export const getCargaFamiliarById = async (req, res) => {
 
 export const createCargaFamiliar = async (req, res) => {
   try {
-    const { trabajador_id, nombre, fecha_nacimiento, parentesco } = req.body;
+    const { id_trabajadores, nombre, fecha_nacimiento, parentesco } = req.body;
 
     const query = `
-      INSERT INTO carga_familiar (trabajador_id, nombre, fecha_nacimiento, parentesco)
+      INSERT INTO carga_familiar (id_trabajadores, nombre, fecha_nacimiento, parentesco)
       VALUES ($1, $2, $3, $4)
       RETURNING *
     `;
-    const values = [trabajador_id, nombre, fecha_nacimiento, parentesco];
+    const values = [id_trabajadores, nombre, fecha_nacimiento, parentesco];
 
     const { rows } = await pool.query(query, values);
 

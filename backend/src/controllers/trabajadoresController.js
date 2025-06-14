@@ -1,5 +1,20 @@
-// trabajadoresController.js
+// src/controllers/trabajadoresController.js
 import { pool } from "../db.js";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+
+// === Configuración de subida de archivos ===
+const storage = multer.diskStorage({
+  destination: "uploads/trabajadores/",
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, `${file.fieldname}-${uniqueSuffix}${path.extname(file.originalname)}`);
+  },
+});
+
+export const upload = multer({ storage });
 
 // === GET /api/trabajadores ===
 export const getTrabajadores = async (req, res) => {
@@ -8,23 +23,22 @@ export const getTrabajadores = async (req, res) => {
     const page = parseInt(pagina);
     const limit = parseInt(limite);
     const offset = (page - 1) * limit;
+    const empresa_id = req.user.empresa_id;
 
-    // Consulta paginada
     const query = `
       SELECT * FROM trabajadores
-      WHERE activo = true AND (nombre ILIKE $1 OR apellidos ILIKE $1 OR rut ILIKE $1)
-      ORDER BY id
-      LIMIT $2 OFFSET $3
+      WHERE activo = true AND empresa_id = $1 AND (nombre ILIKE $2 OR apellidos ILIKE $2 OR rut ILIKE $2)
+      ORDER BY id_trabajadores
+      LIMIT $3 OFFSET $4
     `;
-    const values = [`%${filtro}%`, limit, offset];
+    const values = [empresa_id, `%${filtro}%`, limit, offset];
 
     const { rows } = await pool.query(query, values);
 
-    // Conteo total
     const countResult = await pool.query(
       `SELECT COUNT(*) FROM trabajadores 
-       WHERE activo = true AND (nombre ILIKE $1 OR apellidos ILIKE $1 OR rut ILIKE $1)`,
-      [`%${filtro}%`]
+       WHERE activo = true AND empresa_id = $1 AND (nombre ILIKE $2 OR apellidos ILIKE $2 OR rut ILIKE $2)`,
+      [empresa_id, `%${filtro}%`]
     );
 
     const total = parseInt(countResult.rows[0].count);
@@ -38,27 +52,9 @@ export const getTrabajadores = async (req, res) => {
       message: rows.length > 0 ? "Datos cargados" : "Sin trabajadores",
       error: false
     });
-} catch (error) {
-    console.error("Error creando trabajador:", error);
-    res.status(500).json({ error: true, message: "Error creando trabajador" });
-  }
-};
-
-// === Desactivar Trabajador ===
-export const desactivarTrabajador = async (req, res) => {
-  const id = parseInt(req.params.id);
-  try {
-    const result = await pool.query(
-      "UPDATE trabajadores SET activo = false WHERE id = $1 RETURNING *",
-      [id]
-    );
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: true, message: "Trabajador no encontrado" });
-    }
-    res.json({ error: false, message: "Trabajador desactivado", data: result.rows[0] });
   } catch (error) {
-    console.error("Error al desactivar trabajador:", error);
-    res.status(500).json({ error: true, message: "Error del servidor" });
+    console.error("Error getTrabajadores:", error);
+    res.status(500).json({ error: true, message: "Error obteniendo trabajadores" });
   }
 };
 
@@ -66,8 +62,9 @@ export const desactivarTrabajador = async (req, res) => {
 export const getTrabajadorById = async (req, res) => {
   try {
     const { id } = req.params;
-    const query = `SELECT * FROM trabajadores WHERE activo = true AND id = $1`;
-    const { rows } = await pool.query(query, [id]);
+    const empresa_id = req.user.empresa_id;
+    const query = `SELECT * FROM trabajadores WHERE activo = true AND empresa_id = $1 AND id = $2`;
+    const { rows } = await pool.query(query, [empresa_id, id]);
 
     if (rows.length === 0) {
       return res.status(404).json({ error: true, message: "Trabajador no encontrado" });
@@ -75,101 +72,33 @@ export const getTrabajadorById = async (req, res) => {
 
     res.json({ error: false, data: rows[0], message: "Datos cargados" });
   } catch (error) {
-    console.error("Error getTrabajadorById:", error.message || error);
+    console.error("Error getTrabajadorById:", error);
     res.status(500).json({ error: true, message: "Error obteniendo trabajador" });
   }
 };
 
-// === POST /api/trabajadores ===
-export const createTrabajador = async (req, res) => {
-    try {
-      const {
-        rut,
-        nombre,
-        apellidos,
-        correo,
-        telefono,
-        fechaNacimiento: fecha_nacimiento,
-        estadoCivil: estado_civil,
-        hijos,
-        direccion,
-        casaBloqueDepto: casa_bloque_depto,
-        comunaId: comuna_id,
-        ciudad,
-        departamentoId: departamento_id,
-        cargoId: cargo_id,
-        tipoContrato: tipocontrato,
-        cantidadDuracion: cantidad_duracion,
-        unidadDuracion: unidad_duracion,
-        jornadaLaboralId: jornada_laboral_id,
-        gratificacionTipo: gratificacion_tipo,
-        gratificacionMonto: gratificacion_monto
-      } = req.body;
-  
-      // 1. Verificar si ya existe un trabajador con ese RUT
-      const { rows: rowsExist } = await pool.query(
-        `SELECT 1 FROM trabajadores WHERE rut = $1 LIMIT 1`,
-        [rut]
-      );
-  
-      if (rowsExist.length > 0) {
-        return res.status(400).json({
-          error: true,
-          message: "Ya existe un trabajador con ese RUT"
-        });
-      }
-  
-      // 2. Insertar nuevo trabajador
-      const query = `
-        INSERT INTO trabajadores (
-          rut, nombre, apellidos, correo, telefono, fecha_nacimiento, estado_civil, hijos, 
-          direccion, casa_bloque_depto, comuna_id, ciudad, departamento_id, cargo_id, 
-          tipocontrato, cantidad_duracion, unidad_duracion, jornada_laboral_id, 
-          gratificacion_tipo, gratificacion_monto
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
-        RETURNING *
-      `;
-  
-      const values = [
-        rut,
-        nombre,
-        apellidos,
-        correo,
-        telefono || null,
-        fecha_nacimiento,
-        estado_civil,
-        parseInt(hijos),
-        direccion,
-        casa_bloque_depto || null,
-        parseInt(comuna_id),
-        ciudad,
-        parseInt(departamento_id),
-        parseInt(cargo_id),
-        tipocontrato,
-        parseInt(cantidad_duracion) || null,
-        unidad_duracion || null,
-        parseInt(jornada_laboral_id),
-        gratificacion_tipo || null,
-        parseFloat(gratificacion_monto) || null
-      ];
-  
-      const { rows } = await pool.query(query, values);
-  
-      res.status(201).json({ error: false, data: rows[0], message: "Trabajador creado correctamente" });
-  
-    } catch (error) {
-      console.error("Error createTrabajador:", error.message || error.detail || error.code);
-      res.status(500).json({ error: true, message: "Error creando trabajador" });
-    }
-  };
-  
+// Para resolver __dirname en ESModules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// === PUT /api/trabajadores/:id ===
-export const updateTrabajador = async (req, res) => {
+const saveUploadedFile = (file, rut, tipo) => {
+  if (!file) return null;
+  const folderPath = path.join(__dirname, "..", "uploads", "trabajadores");
+  if (!fs.existsSync(folderPath)) fs.mkdirSync(folderPath, { recursive: true });
+
+  const ext = path.extname(file.originalname);
+  const fileName = `${rut}_${tipo}${ext}`;
+  const fullPath = path.join(folderPath, fileName);
+
+  fs.writeFileSync(fullPath, file.buffer);
+  return `uploads/trabajadores/${fileName}`;
+};
+
+// === CREATE /api/trabajadores ===
+export const createTrabajador = async (req, res) => {
   try {
-    const { id } = req.params;
     const {
+      rut,
       nombre,
       apellidos,
       correo,
@@ -179,74 +108,121 @@ export const updateTrabajador = async (req, res) => {
       hijos,
       direccion,
       casaBloqueDepto: casa_bloque_depto,
-      comunaId: comuna_id,
+      comunaId: id_comunas,
       ciudad,
-      departamentoId: departamento_id,
-      cargoId: cargo_id,
-      tipoContrato: tipocontrato,
-      cantidadDuracion: cantidad_duracion,
-      unidadDuracion: unidad_duracion,
-      jornadaLaboralId: jornada_laboral_id,
-      gratificacionTipo: gratificacion_tipo,
-      gratificacionMonto: gratificacion_monto
+      departamentoId: id_departamentos,
+      cargoId: id_cargo,
+      empresa_id
     } = req.body;
 
-    const query = `
-      UPDATE trabajadores SET
-        nombre = $1,
-        apellidos = $2,
-        correo = $3,
-        telefono = $4,
-        fecha_nacimiento = $5,
-        estado_civil = $6,
-        hijos = $7,
-        direccion = $8,
-        casa_bloque_depto = $9,
-        comuna_id = $10,
-        ciudad = $11,
-        departamento_id = $12,
-        cargo_id = $13,
-        tipocontrato = $14,
-        cantidad_duracion = $15,
-        unidad_duracion = $16,
-        jornada_laboral_id = $17,
-        gratificacion_tipo = $18,
-        gratificacion_monto = $19
-      WHERE id = $20
-      RETURNING *
-    `;
+    // Manejo de archivos adjuntos
+    let cv = null;
+    let certificado_antecedentes = null;
+    let certificado_afp = null;
+    let formulario_fun = null;
+
+    if (req.files) {
+      if (req.files.cv?.[0]) cv = req.files.cv[0].filename;
+      if (req.files.certificado_antecedentes?.[0]) certificado_antecedentes = req.files.certificado_antecedentes[0].filename;
+      if (req.files.certificado_afp?.[0]) certificado_afp = req.files.certificado_afp[0].filename;
+      if (req.files.formulario_fun?.[0]) formulario_fun = req.files.formulario_fun[0].filename;
+    }
+
+    const { rows: rowsExist } = await pool.query(
+      `SELECT 1 FROM trabajadores WHERE rut = $1 LIMIT 1`,
+      [rut]
+    );
+
+    if (rowsExist.length > 0) {
+      return res.status(400).json({ error: true, message: "Ya existe un trabajador con ese RUT" });
+    }
+
+    const fields = [
+      "rut", "nombre", "apellidos", "correo", "telefono",
+      "fecha_nacimiento", "estado_civil", "hijos", "direccion",
+      "casa_bloque_depto", "id_comunas", "ciudad",
+      "id_departamentos", "id_cargo", "empresa_id"
+    ];
 
     const values = [
-      nombre,
-      apellidos,
-      correo,
-      telefono || null,
-      fecha_nacimiento,
-      estado_civil,
-      parseInt(hijos),
-      direccion,
-      casa_bloque_depto || null,
-      parseInt(comuna_id),
-      ciudad,
-      parseInt(departamento_id),
-      parseInt(cargo_id),
-      tipocontrato,
-      parseInt(cantidad_duracion) || null,
-      unidad_duracion || null,
-      parseInt(jornada_laboral_id),
-      gratificacion_tipo || null,
-      parseFloat(gratificacion_monto) || null,
-      id
+      rut, nombre, apellidos, correo, telefono || null,
+      fecha_nacimiento, estado_civil, parseInt(hijos), direccion,
+      casa_bloque_depto || null, parseInt(id_comunas), ciudad,
+      parseInt(id_departamentos), parseInt(id_cargo), parseInt(empresa_id)
     ];
+
+    if (cv) { fields.push("cv"); values.push(cv); }
+    if (certificado_antecedentes) { fields.push("certificado_antecedentes"); values.push(certificado_antecedentes); }
+    if (certificado_afp) { fields.push("certificado_afp"); values.push(certificado_afp); }
+    if (formulario_fun) { fields.push("formulario_fun"); values.push(formulario_fun); }
+
+    const placeholders = fields.map((_, i) => `$${i + 1}`).join(", ");
+    const query = `INSERT INTO trabajadores (${fields.join(", ")}) VALUES (${placeholders}) RETURNING *`;
 
     const { rows } = await pool.query(query, values);
 
-    if (!rows.length) {
-      return res.status(404).json({ error: true, message: "Trabajador no encontrado" });
+    res.status(201).json({ error: false, data: rows[0], message: "Trabajador creado correctamente" });
+
+  } catch (error) {
+    console.error("Error createTrabajador:", error.message || error.detail || error.code);
+    res.status(500).json({ error: true, message: "Error creando trabajador" });
+  }
+};
+
+// === UPDATE /api/trabajadores/:id ===
+export const updateTrabajador = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      nombre, apellidos, correo, telefono,
+      fechaNacimiento: fecha_nacimiento,
+      estadoCivil: estado_civil,
+      hijos, direccion, casaBloqueDepto: casa_bloque_depto,
+      comunaId: id_comunas, ciudad,
+      departamentoId: id_departamentos, cargoId: id_cargo
+    } = req.body;
+
+    let cv = null, certificado_antecedentes = null, certificado_afp = null, formulario_fun = null;
+
+    if (req.files) {
+      if (req.files.cv?.[0]) cv = req.files.cv[0].filename;
+      if (req.files.certificado_antecedentes?.[0]) certificado_antecedentes = req.files.certificado_antecedentes[0].filename;
+      if (req.files.certificado_afp?.[0]) certificado_afp = req.files.certificado_afp[0].filename;
+      if (req.files.formulario_fun?.[0]) formulario_fun = req.files.formulario_fun[0].filename;
     }
 
-    res.json({ error: false, data: rows[0], message: "Trabajador actualizado correctamente" });
+    const fields = [
+      { name: "nombre", value: nombre },
+      { name: "apellidos", value: apellidos },
+      { name: "correo", value: correo },
+      { name: "telefono", value: telefono || null },
+      { name: "fecha_nacimiento", value: fecha_nacimiento },
+      { name: "estado_civil", value: estado_civil },
+      { name: "hijos", value: parseInt(hijos) },
+      { name: "direccion", value: direccion },
+      { name: "casa_bloque_depto", value: casa_bloque_depto || null },
+      { name: "id_comunas", value: parseInt(id_comunas) },
+      { name: "ciudad", value: ciudad },
+      { name: "id_departamentos", value: parseInt(id_departamentos) },
+      { name: "id_cargo", value: parseInt(id_cargo) }
+    ];
 
+    if (cv) fields.push({ name: "cv", value: cv });
+    if (certificado_antecedentes) fields.push({ name: "certificado_antecedentes", value: certificado_antecedentes });
+    if (certificado_afp) fields.push({ name: "certificado_afp", value: certificado_afp });
+    if (formulario_fun) fields.push({ name: "formulario_fun", value: formulario_fun });
+
+    const setClause = fields.map((f, i) => `${f.name} = $${i + 1}`).join(", ");
+    const values = fields.map(f => f.value);
+
+    const query = `UPDATE trabajadores SET ${setClause} WHERE id = $${values.length + 1} RETURNING *`;
+    values.push(id);
+
+    const { rows } = await pool.query(query, values);
+
+    if (!rows.length) return res.status(404).json({ error: true, message: "Trabajador no encontrado" });
+
+    res.json({ error: false, data: rows[0], message: "Trabajador actualizado correctamente" });
   } catch (error) {
     console.error("Error updateTrabajador:", error.message || error.detail || error.code);
     res.status(500).json({ error: true, message: "Error actualizando trabajador" });
@@ -257,18 +233,19 @@ export const updateTrabajador = async (req, res) => {
 export const deleteTrabajador = async (req, res) => {
   try {
     const { id } = req.params;
+    const empresa_id = req.user.empresa_id;
 
-    const query = `UPDATE trabajadores SET activo = false WHERE id = $1 RETURNING *`;
+    const query = `UPDATE trabajadores SET activo = false WHERE id_trabajadores = $1 AND empresa_id = $2 RETURNING *`;
+    const { rows } = await pool.query(query, [id, empresa_id]);
 
-    const { rows } = await pool.query(query, [id]);
-
-    if (!rows.length) {
-      return res.status(404).json({ error: true, message: "Trabajador no encontrado" });
-    }
+    if (!rows.length) return res.status(404).json({ error: true, message: "Trabajador no encontrado" });
 
     res.json({ error: false, message: "Trabajador desactivado correctamente" });
   } catch (error) {
-    console.error("Error deleteTrabajador:", error.message || error.detail || error.code);
+    console.error("Error deleteTrabajador:", error);
     res.status(500).json({ error: true, message: "Error desactivando trabajador" });
   }
 };
+
+// === PATCH /api/trabajadores/:id/desactivar ===
+export const desactivarTrabajador = deleteTrabajador;

@@ -1,29 +1,19 @@
+// src/routes/departamentos.js
 import express from "express";
-import { pool } from "../db.js";
+import {
+  getDepartamentos,
+  getDepartamentoById,
+  createDepartamento,
+  updateDepartamento,
+  deleteDepartamento,
+} from "../controllers/departamentosController.js";
 
 const router = express.Router();
 
-// GET /api/comunas
-router.get("/departamento", async (req, res) => {
-
-
-  let query = "SELECT id_departamento as id, nombre FROM departamentos";
-
-  try {
-    const result = await pool.query(query);
-
-    res.json({
-      error: false,
-      data: result.rows,
-      message: result.rows.length > 0 ? "Departamentos cargados" : "Sin departamentos",
-    });
-  } catch (err) {
-    console.error("Error al cargar departamentos:", err);
-    res.status(500).json({
-      error: true,
-      message: "No se pudieron cargar los departamento",
-    });
-  }
-});
+router.get("/", getDepartamentos);
+router.get("/:id", getDepartamentoById);
+router.post("/", createDepartamento);
+router.put("/:id", updateDepartamento);
+router.delete("/:id", deleteDepartamento);
 
 export default router;

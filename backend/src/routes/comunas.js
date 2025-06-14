@@ -7,7 +7,7 @@ const router = express.Router();
 router.get("/comunas", async (req, res) => {
   const { ciudad } = req.query;
 
-  let query = "SELECT id_comuna as id, nombre FROM comunas";
+  let query = "SELECT id_comunas, nombre FROM comunas";
 
   try {
     const result = await pool.query(query, ciudad ? [ciudad] : []);

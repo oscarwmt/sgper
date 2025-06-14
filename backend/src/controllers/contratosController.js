@@ -21,22 +21,22 @@ export const getDatosTrabajadorPorRUT = async (req, res) => {
 
 export const getContratos = async (req, res) => {
   try {
-    const { page = 1, limit = 10, trabajador_id } = req.query;
+    const { page = 1, limit = 10, id_trabajadores } = req.query;
     const offset = (page - 1) * limit;
 
     let query = "SELECT * FROM contrato";
     let countQuery = "SELECT COUNT(*) FROM contrato";
     const params = [];
-    if (trabajador_id) {
-      query += " WHERE trabajador_id = $1";
-      countQuery += " WHERE trabajador_id = $1";
-      params.push(trabajador_id);
+    if (id_trabajadores) {
+      query += " WHERE id_trabajadores = $1";
+      countQuery += " WHERE id_trabajadores = $1";
+      params.push(id_trabajadores);
     }
     query += ` ORDER BY id LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     params.push(limit, offset);
 
     const { rows } = await pool.query(query, params);
-    const countResult = await pool.query(countQuery, trabajador_id ? [trabajador_id] : []);
+    const countResult = await pool.query(countQuery, id_trabajadores ? [id_trabajadores] : []);
 
     const total = parseInt(countResult.rows[0].count);
 
@@ -65,83 +65,60 @@ export const getContratoById = async (req, res) => {
 export const createContrato = async (req, res) => {
   try {
     const {
-      trabajador_id,
-      tipo_contrato,
+      id_trabajadores,
+      tipo_id_contrato, // ✅ Campo actualizado
       fecha_inicio,
-      fecha_termino,
-      copia_contrato,
-      departamento,
-      cargo,
+      fecha_fin,
       descripcion_funciones,
       sueldo_base,
       bono_locomocion,
       bono_colacion,
       otros_bonos,
-      beneficios,
-      horario_trabajo,
       dias_vacaciones,
-      politicas_empresa,
-      clausulas,
-      isapre,
-      afp,
+      jornada_laboral_id,
+      id_departamentos,
+      id_cargo,
+      id_afp,
+      id_isapre,
     } = req.body;
 
-    const query = `
-      INSERT INTO contrato (
-        trabajador_id,
-        tipo_contrato,
+    // Validación básica
+    if (!id_trabajadores || !id_departamentos || !jornada_laboral_id || !tipo_id_contrato) {
+      return res.status(400).json({ error: "Campos obligatorios faltantes" });
+    }
+
+    // Ejecuta tu consulta SQL aquí
+    const result = await pool.query(
+      `INSERT INTO contrato (
+        id_trabajadores, tipo_id_contrato, fecha_inicio, fecha_fin, 
+        descripcion_funciones, sueldo_base, bono_locomocion, bono_colacion,
+        otros_bonos, dias_vacaciones, jornada_laboral_id, id_departamentos,
+        id_cargo, id_afp, id_isapre
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      RETURNING *`,
+      [
+        id_trabajadores,
+        tipo_id_contrato, // ✅ Usamos el nuevo campo
         fecha_inicio,
-        fecha_termino,
-        copia_contrato,
-        departamento,
-        cargo,
+        fecha_fin,
         descripcion_funciones,
         sueldo_base,
         bono_locomocion,
         bono_colacion,
         otros_bonos,
-        beneficios,
-        horario_trabajo,
         dias_vacaciones,
-        politicas_empresa,
-        clausulas,
-        isapre,
-        afp
-      )
-      VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16, $17, $18, $19
-      )
-      RETURNING *
-    `;
-    const values = [
-      trabajador_id,
-      tipo_contrato,
-      fecha_inicio,
-      fecha_termino,
-      copia_contrato,
-      departamento,
-      cargo,
-      descripcion_funciones,
-      sueldo_base,
-      bono_locomocion,
-      bono_colacion,
-      otros_bonos,
-      beneficios,
-      horario_trabajo,
-      dias_vacaciones,
-      politicas_empresa,
-      clausulas,
-      isapre,
-      afp,
-    ];
+        jornada_laboral_id,
+        id_departamentos,
+        id_cargo,
+        id_afp,
+        id_isapre,
+      ]
+    );
 
-    const { rows } = await pool.query(query, values);
-
-    res.status(201).json(rows[0]);
+    res.json(result.rows[0]);
   } catch (error) {
-    console.error("Error createContrato:", error);
-    res.status(500).json({ error: "Error creando contrato" });
+    console.error("Error creando contrato:", error.message);
+    res.status(500).json({ error: "Error interno del servidor" });
   }
 };
 
@@ -150,12 +127,12 @@ export const updateContrato = async (req, res) => {
   try {
     const { id } = req.params;
     const {
-      tipo_contrato,
+      tipo_id_contrato,
       fecha_inicio,
       fecha_termino,
       copia_contrato,
-      departamento,
-      cargo,
+      id_departamentos,   // ✅ Corregido
+      id_cargo,          // ✅ Corregido
       descripcion_funciones,
       sueldo_base,
       bono_locomocion,
@@ -166,18 +143,18 @@ export const updateContrato = async (req, res) => {
       dias_vacaciones,
       politicas_empresa,
       clausulas,
-      isapre,
-      afp,
+      id_isapre,         // ✅ Corregido
+      id_afp,            // ✅ Corregido
     } = req.body;
 
     const query = `
       UPDATE contrato SET
-        tipo_contrato = $1,
+        tipo_id_contrato = $1,
         fecha_inicio = $2,
         fecha_termino = $3,
         copia_contrato = $4,
-        departamento = $5,
-        cargo = $6,
+        id_departamentos = $5,
+        id_cargo = $6,
         descripcion_funciones = $7,
         sueldo_base = $8,
         bono_locomocion = $9,
@@ -188,18 +165,18 @@ export const updateContrato = async (req, res) => {
         dias_vacaciones = $14,
         politicas_empresa = $15,
         clausulas = $16,
-        isapre = $17,
-        afp = $18
+        id_isapre = $17,
+        id_afp = $18
       WHERE id = $19
       RETURNING *
     `;
     const values = [
-      tipo_contrato,
+      tipo_id_contrato,
       fecha_inicio,
       fecha_termino,
       copia_contrato,
-      departamento,
-      cargo,
+      id_departamentos,
+      id_cargo,
       descripcion_funciones,
       sueldo_base,
       bono_locomocion,
@@ -210,8 +187,8 @@ export const updateContrato = async (req, res) => {
       dias_vacaciones,
       politicas_empresa,
       clausulas,
-      isapre,
-      afp,
+      id_isapre,
+      id_afp,
       id,
     ];
 
@@ -225,7 +202,6 @@ export const updateContrato = async (req, res) => {
     res.status(500).json({ error: "Error actualizando contrato" });
   }
 };
-
 
 export const deleteContrato = async (req, res) => {
   try {

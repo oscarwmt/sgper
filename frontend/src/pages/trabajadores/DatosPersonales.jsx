@@ -1,6 +1,7 @@
 // src/pages/trabajadores/DatosPersonales.jsx
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { fetchWithAuth } from "../../../../backend/src/utils/fetchWithAuth";
 
 const PAGE_SIZE = 5;
 
@@ -16,7 +17,6 @@ function DatosPersonales() {
 
   const navigate = useNavigate();
 
-  // Función para cargar trabajadores desde API
   const cargarTrabajadores = useCallback(async () => {
     setCargando(true);
     setError("");
@@ -26,15 +26,16 @@ function DatosPersonales() {
         limite: PAGE_SIZE,
         filtro,
       });
-  
-      const res = await fetch(`/api/trabajadores?${params.toString()}`);
+
+      const res = await fetchWithAuth(`/api/trabajadores?${params.toString()}`);
+
       if (!res.ok) throw new Error("Error al cargar trabajadores");
-  
+
       const data = await res.json();
-  
+
       if (data && Array.isArray(data.data)) {
         setTrabajadores(data.data);
-        setTotalPaginas(data.total_paginas || Math.ceil(data.data.length / PAGE_SIZE));
+        setTotalPaginas(data.total_paginas || 1);
       } else {
         setTrabajadores([]);
         setTotalPaginas(1);
@@ -67,26 +68,24 @@ function DatosPersonales() {
     if (!trabajadorAEliminar) return;
     setError("");
     try {
-      const res = await fetch(`/api/trabajadores/${trabajadorAEliminar.id}`, {
+      const res = await fetchWithAuth(`/api/trabajadores/${trabajadorAEliminar.id}`, {
         method: "DELETE",
       });
       if (!res.ok) throw new Error("Error al desactivar trabajador");
       cerrarModalDesactivar();
       cargarTrabajadores();
     } catch (e) {
+      console.error("Error al desactivar trabajador:", e.message);
       setError("No se pudo desactivar el trabajador");
     }
   }
-  
 
   return (
     <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">Listado de Trabajadores</h1>
 
-      {/* Mensaje de error */}
       {error && <p className="text-red-600 mb-2">{error}</p>}
 
-      {/* Filtro y botón de crear */}
       <div className="mb-4 flex items-center gap-2">
         <input
           type="text"
@@ -106,7 +105,6 @@ function DatosPersonales() {
         </button>
       </div>
 
-      {/* Tabla de trabajadores */}
       <table className="min-w-full border border-gray-300 rounded overflow-hidden">
         <thead className="bg-gray-200">
           <tr>
@@ -138,24 +136,23 @@ function DatosPersonales() {
                 <td className="border p-2">{t.correo}</td>
                 <td className="border p-2">{t.telefono || "-"}</td>
                 <td className="border p-2 text-center space-x-2">
-                    <button
-                        type="button"
-                        onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        navigate(`/dashboard/trabajadores/editar/${t.id}`);
-                        }}
-                        className="bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700"
-                    >
-                        Editar
-                    </button>
-
-                    <button
-                        onClick={() => abrirModalDesactivar(t)}
-                        className="bg-red-600 text-white px-2 py-1 rounded hover:bg-red-700"
-                    >
-                        Desactivar
-                    </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      navigate(`/dashboard/trabajadores/editar/${t.id}`);
+                    }}
+                    className="bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => abrirModalDesactivar(t)}
+                    className="bg-red-600 text-white px-2 py-1 rounded hover:bg-red-700"
+                  >
+                    Desactivar
+                  </button>
                 </td>
               </tr>
             ))
@@ -163,7 +160,6 @@ function DatosPersonales() {
         </tbody>
       </table>
 
-      {/* Paginación */}
       <div className="mt-4 flex justify-center space-x-2">
         <button
           disabled={pagina === 1}
@@ -184,7 +180,6 @@ function DatosPersonales() {
         </button>
       </div>
 
-      {/* Modal de confirmación */}
       {modalDesactivarVisible && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
           <div className="bg-white rounded p-6 shadow-lg w-80">

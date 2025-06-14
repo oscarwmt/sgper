@@ -12,7 +12,7 @@ function SideNav({ activeSection }) {
       <NavLink to="/dashboard/trabajadores/datos-personales" className={getLinkClass}>
         Datos Personales
       </NavLink>
-      <NavLink to="/dashboard/trabajadores/contratos" className={getLinkClass}>
+      <NavLink to="/dashboard/trabajadores/listado-contratos" className={getLinkClass}>
         Contratos
       </NavLink>
       <NavLink to="/dashboard/trabajadores/cargos" className={getLinkClass}>
